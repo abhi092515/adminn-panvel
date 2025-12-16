@@ -6,6 +6,7 @@ import {
   insertCourtSchema, insertCustomerSchema, insertBookingSchema,
   insertTransactionSchema, insertWaitlistSchema, insertBlockedSlotSchema,
   insertTournamentSchema, insertTournamentTeamSchema, insertExpenseSchema,
+  insertMembershipPlanSchema, insertMembershipSchema, insertLoyaltyPointsSchema,
   type DashboardStats, type SettlementSummary,
 } from "@shared/schema";
 
@@ -808,6 +809,230 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating staff role:", error);
       res.status(500).json({ message: "Failed to update staff role" });
+    }
+  });
+
+  // ========== Membership Plans (Owner only) ==========
+  app.get("/api/membership-plans", async (req, res) => {
+    try {
+      const plans = await storage.getMembershipPlans();
+      res.json(plans);
+    } catch (error) {
+      console.error("Error getting membership plans:", error);
+      res.status(500).json({ message: "Failed to get membership plans" });
+    }
+  });
+
+  app.post("/api/membership-plans", requireOwnerRole, async (req, res) => {
+    try {
+      const result = insertMembershipPlanSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.message });
+      }
+      const plan = await storage.createMembershipPlan(result.data);
+      broadcast("membership_plan_created", plan);
+      res.status(201).json(plan);
+    } catch (error) {
+      console.error("Error creating membership plan:", error);
+      res.status(500).json({ message: "Failed to create membership plan" });
+    }
+  });
+
+  app.patch("/api/membership-plans/:id", requireOwnerRole, async (req, res) => {
+    try {
+      const plan = await storage.updateMembershipPlan(req.params.id, req.body);
+      if (!plan) {
+        return res.status(404).json({ message: "Membership plan not found" });
+      }
+      broadcast("membership_plan_updated", plan);
+      res.json(plan);
+    } catch (error) {
+      console.error("Error updating membership plan:", error);
+      res.status(500).json({ message: "Failed to update membership plan" });
+    }
+  });
+
+  app.delete("/api/membership-plans/:id", requireOwnerRole, async (req, res) => {
+    try {
+      await storage.deleteMembershipPlan(req.params.id);
+      broadcast("membership_plan_deleted", { id: req.params.id });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting membership plan:", error);
+      res.status(500).json({ message: "Failed to delete membership plan" });
+    }
+  });
+
+  // ========== Customer Memberships ==========
+  app.get("/api/memberships", async (req, res) => {
+    try {
+      const allMemberships = await storage.getMemberships();
+      // Enrich with plan details
+      const plans = await storage.getMembershipPlans();
+      const planMap = new Map(plans.map(p => [p.id, p]));
+      
+      const enriched = allMemberships.map(m => ({
+        ...m,
+        plan: planMap.get(m.planId),
+      }));
+      res.json(enriched);
+    } catch (error) {
+      console.error("Error getting memberships:", error);
+      res.status(500).json({ message: "Failed to get memberships" });
+    }
+  });
+
+  app.get("/api/customers/:customerId/membership", async (req, res) => {
+    try {
+      const membership = await storage.getActiveMembership(req.params.customerId);
+      if (!membership) {
+        return res.json(null);
+      }
+      const plan = await storage.getMembershipPlan(membership.planId);
+      res.json({ ...membership, plan });
+    } catch (error) {
+      console.error("Error getting customer membership:", error);
+      res.status(500).json({ message: "Failed to get customer membership" });
+    }
+  });
+
+  app.post("/api/memberships", async (req, res) => {
+    try {
+      const result = insertMembershipSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.message });
+      }
+      
+      // Check if customer exists
+      const customer = await storage.getCustomer(result.data.customerId);
+      if (!customer) {
+        return res.status(404).json({ message: "Customer not found" });
+      }
+      
+      // Check if plan exists
+      const plan = await storage.getMembershipPlan(result.data.planId);
+      if (!plan) {
+        return res.status(404).json({ message: "Membership plan not found" });
+      }
+      
+      const membership = await storage.createMembership(result.data);
+      
+      // Add VIP tag to customer if not already present
+      if (!customer.tags.includes("VIP")) {
+        const updatedCustomer = await storage.updateCustomer(customer.id, {
+          tags: [...customer.tags, "VIP"],
+        });
+        if (updatedCustomer) {
+          broadcast("customer_updated", updatedCustomer);
+        }
+      }
+      
+      // Award loyalty points for joining membership (10 points per 100 spent)
+      const pointsEarned = Math.floor(Number(result.data.paidAmount) / 100) * 10;
+      if (pointsEarned > 0) {
+        const loyaltyRecord = await storage.createLoyaltyPoints({
+          customerId: result.data.customerId,
+          type: "earned",
+          points: pointsEarned,
+          description: `Membership purchase: ${plan.name}`,
+        });
+        broadcast("loyalty_earned", { ...loyaltyRecord, balance: pointsEarned });
+      }
+      
+      broadcast("membership_created", { ...membership, plan });
+      res.status(201).json({ ...membership, plan, pointsEarned });
+    } catch (error) {
+      console.error("Error creating membership:", error);
+      res.status(500).json({ message: "Failed to create membership" });
+    }
+  });
+
+  app.patch("/api/memberships/:id", async (req, res) => {
+    try {
+      const membership = await storage.updateMembership(req.params.id, req.body);
+      if (!membership) {
+        return res.status(404).json({ message: "Membership not found" });
+      }
+      broadcast("membership_updated", membership);
+      res.json(membership);
+    } catch (error) {
+      console.error("Error updating membership:", error);
+      res.status(500).json({ message: "Failed to update membership" });
+    }
+  });
+
+  // ========== Loyalty Points ==========
+  app.get("/api/customers/:customerId/loyalty", async (req, res) => {
+    try {
+      const points = await storage.getLoyaltyPoints(req.params.customerId);
+      const balance = await storage.getCustomerPointsBalance(req.params.customerId);
+      
+      // Calculate stats
+      const earned = points.filter(p => p.type === "earned").reduce((sum, p) => sum + p.points, 0);
+      const redeemed = points.filter(p => p.type === "redeemed").reduce((sum, p) => sum + Math.abs(p.points), 0);
+      
+      res.json({
+        balance,
+        lifetimeEarned: earned,
+        lifetimeRedeemed: redeemed,
+        history: points.slice(0, 20), // Last 20 transactions
+      });
+    } catch (error) {
+      console.error("Error getting customer loyalty:", error);
+      res.status(500).json({ message: "Failed to get loyalty points" });
+    }
+  });
+
+  app.post("/api/customers/:customerId/loyalty/earn", async (req, res) => {
+    try {
+      const { points, description, bookingId } = req.body;
+      if (!points || points <= 0) {
+        return res.status(400).json({ message: "Points must be positive" });
+      }
+      
+      const pointsRecord = await storage.createLoyaltyPoints({
+        customerId: req.params.customerId,
+        type: "earned",
+        points,
+        description: description || "Points earned",
+        bookingId,
+      });
+      
+      const balance = await storage.getCustomerPointsBalance(req.params.customerId);
+      broadcast("loyalty_earned", { ...pointsRecord, balance });
+      res.status(201).json({ ...pointsRecord, balance });
+    } catch (error) {
+      console.error("Error earning loyalty points:", error);
+      res.status(500).json({ message: "Failed to earn loyalty points" });
+    }
+  });
+
+  app.post("/api/customers/:customerId/loyalty/redeem", async (req, res) => {
+    try {
+      const { points, description } = req.body;
+      if (!points || points <= 0) {
+        return res.status(400).json({ message: "Points must be positive" });
+      }
+      
+      // Check balance
+      const balance = await storage.getCustomerPointsBalance(req.params.customerId);
+      if (balance < points) {
+        return res.status(400).json({ message: `Insufficient points. Available: ${balance}` });
+      }
+      
+      const pointsRecord = await storage.createLoyaltyPoints({
+        customerId: req.params.customerId,
+        type: "redeemed",
+        points: -points, // Negative for redemption
+        description: description || "Points redeemed",
+      });
+      
+      const newBalance = await storage.getCustomerPointsBalance(req.params.customerId);
+      broadcast("loyalty_redeemed", { ...pointsRecord, balance: newBalance });
+      res.status(201).json({ ...pointsRecord, balance: newBalance });
+    } catch (error) {
+      console.error("Error redeeming loyalty points:", error);
+      res.status(500).json({ message: "Failed to redeem loyalty points" });
     }
   });
 

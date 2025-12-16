@@ -1,8 +1,9 @@
 import { db } from "./db";
-import { eq, and, desc, asc, gte, lte, sql } from "drizzle-orm";
+import { eq, and, desc, asc, gte, lte, sql, sum } from "drizzle-orm";
 import {
   users, courts, customers, bookings, transactions, settlements,
   waitlist, blockedSlots, tournaments, tournamentTeams, maintenanceLogs, expenses,
+  membershipPlans, memberships, loyaltyPoints,
   type User, type UpsertUser,
   type Court, type InsertCourt,
   type Customer, type InsertCustomer,
@@ -15,6 +16,9 @@ import {
   type TournamentTeam, type InsertTournamentTeam,
   type MaintenanceLog, type InsertMaintenanceLog,
   type Expense, type InsertExpense,
+  type MembershipPlan, type InsertMembershipPlan,
+  type Membership, type InsertMembership,
+  type LoyaltyPoints, type InsertLoyaltyPoints,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -87,6 +91,26 @@ export interface IStorage {
   getExpenses(): Promise<Expense[]>;
   createExpense(expense: InsertExpense): Promise<Expense>;
   deleteExpense(id: string): Promise<void>;
+
+  // Membership Plans
+  getMembershipPlans(): Promise<MembershipPlan[]>;
+  getMembershipPlan(id: string): Promise<MembershipPlan | undefined>;
+  createMembershipPlan(plan: InsertMembershipPlan): Promise<MembershipPlan>;
+  updateMembershipPlan(id: string, plan: Partial<InsertMembershipPlan>): Promise<MembershipPlan | undefined>;
+  deleteMembershipPlan(id: string): Promise<void>;
+
+  // Memberships
+  getMemberships(): Promise<Membership[]>;
+  getMembership(id: string): Promise<Membership | undefined>;
+  getCustomerMemberships(customerId: string): Promise<Membership[]>;
+  getActiveMembership(customerId: string): Promise<Membership | undefined>;
+  createMembership(membership: InsertMembership): Promise<Membership>;
+  updateMembership(id: string, membership: Partial<InsertMembership>): Promise<Membership | undefined>;
+
+  // Loyalty Points
+  getLoyaltyPoints(customerId: string): Promise<LoyaltyPoints[]>;
+  createLoyaltyPoints(points: InsertLoyaltyPoints): Promise<LoyaltyPoints>;
+  getCustomerPointsBalance(customerId: string): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -316,6 +340,90 @@ export class DatabaseStorage implements IStorage {
 
   async deleteExpense(id: string): Promise<void> {
     await db.delete(expenses).where(eq(expenses.id, id));
+  }
+
+  // Membership Plans
+  async getMembershipPlans(): Promise<MembershipPlan[]> {
+    return db.select().from(membershipPlans).orderBy(asc(membershipPlans.price));
+  }
+
+  async getMembershipPlan(id: string): Promise<MembershipPlan | undefined> {
+    const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, id));
+    return plan;
+  }
+
+  async createMembershipPlan(plan: InsertMembershipPlan): Promise<MembershipPlan> {
+    const [created] = await db.insert(membershipPlans).values(plan).returning();
+    return created;
+  }
+
+  async updateMembershipPlan(id: string, plan: Partial<InsertMembershipPlan>): Promise<MembershipPlan | undefined> {
+    const [updated] = await db.update(membershipPlans).set(plan).where(eq(membershipPlans.id, id)).returning();
+    return updated;
+  }
+
+  async deleteMembershipPlan(id: string): Promise<void> {
+    await db.delete(membershipPlans).where(eq(membershipPlans.id, id));
+  }
+
+  // Memberships
+  async getMemberships(): Promise<Membership[]> {
+    return db.select().from(memberships).orderBy(desc(memberships.createdAt));
+  }
+
+  async getMembership(id: string): Promise<Membership | undefined> {
+    const [membership] = await db.select().from(memberships).where(eq(memberships.id, id));
+    return membership;
+  }
+
+  async getCustomerMemberships(customerId: string): Promise<Membership[]> {
+    return db.select().from(memberships)
+      .where(eq(memberships.customerId, customerId))
+      .orderBy(desc(memberships.createdAt));
+  }
+
+  async getActiveMembership(customerId: string): Promise<Membership | undefined> {
+    const today = new Date().toISOString().split("T")[0];
+    const [membership] = await db.select().from(memberships)
+      .where(and(
+        eq(memberships.customerId, customerId),
+        eq(memberships.status, "active"),
+        lte(memberships.startDate, today),
+        gte(memberships.endDate, today)
+      ));
+    return membership;
+  }
+
+  async createMembership(membership: InsertMembership): Promise<Membership> {
+    const [created] = await db.insert(memberships).values(membership).returning();
+    return created;
+  }
+
+  async updateMembership(id: string, membership: Partial<InsertMembership>): Promise<Membership | undefined> {
+    const [updated] = await db.update(memberships).set(membership).where(eq(memberships.id, id)).returning();
+    return updated;
+  }
+
+  // Loyalty Points
+  async getLoyaltyPoints(customerId: string): Promise<LoyaltyPoints[]> {
+    return db.select().from(loyaltyPoints)
+      .where(eq(loyaltyPoints.customerId, customerId))
+      .orderBy(desc(loyaltyPoints.createdAt));
+  }
+
+  async createLoyaltyPoints(points: InsertLoyaltyPoints): Promise<LoyaltyPoints> {
+    const [created] = await db.insert(loyaltyPoints).values(points).returning();
+    return created;
+  }
+
+  async getCustomerPointsBalance(customerId: string): Promise<number> {
+    const result = await db.select({ 
+      total: sql<number>`COALESCE(SUM(${loyaltyPoints.points}), 0)`
+    })
+    .from(loyaltyPoints)
+    .where(eq(loyaltyPoints.customerId, customerId));
+    
+    return Number(result[0]?.total ?? 0);
   }
 }
 

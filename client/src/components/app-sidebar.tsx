@@ -12,6 +12,7 @@ import {
   BarChart3,
   UserCog,
   LogOut,
+  Crown,
 } from "lucide-react";
 import {
   Sidebar,
@@ -57,6 +58,11 @@ const mainNavItems = [
     title: "Tournaments",
     url: "/tournaments",
     icon: Trophy,
+  },
+  {
+    title: "Memberships",
+    url: "/memberships",
+    icon: Crown,
   },
 ];
 

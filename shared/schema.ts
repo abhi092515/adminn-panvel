@@ -160,6 +160,46 @@ export const expenses = pgTable("expenses", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Membership Plans table
+export const membershipPlans = pgTable("membership_plans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  durationDays: integer("duration_days").notNull(), // 30, 90, 365 etc.
+  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  discountPercent: integer("discount_percent").notNull().default(0), // booking discount
+  freeHours: integer("free_hours").notNull().default(0), // free playing hours per month
+  priority: boolean("priority").notNull().default(false), // priority booking
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Customer Memberships table  
+export const memberships = pgTable("memberships", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerId: varchar("customer_id").notNull().references(() => customers.id),
+  planId: varchar("plan_id").notNull().references(() => membershipPlans.id),
+  startDate: text("start_date").notNull(), // YYYY-MM-DD
+  endDate: text("end_date").notNull(), // YYYY-MM-DD
+  status: text("status").notNull().default("active"), // active, expired, cancelled
+  usedFreeHours: integer("used_free_hours").notNull().default(0),
+  paidAmount: decimal("paid_amount", { precision: 10, scale: 2 }).notNull(),
+  paymentMethod: text("payment_method"), // cash, upi, card, online
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Loyalty Points table
+export const loyaltyPoints = pgTable("loyalty_points", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerId: varchar("customer_id").notNull().references(() => customers.id),
+  type: text("type").notNull(), // earned, redeemed, expired
+  points: integer("points").notNull(), // positive for earned, negative for redeemed
+  description: text("description").notNull(),
+  bookingId: varchar("booking_id").references(() => bookings.id),
+  expiresAt: timestamp("expires_at"), // loyalty points expiry
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Relations
 export const courtsRelations = relations(courts, ({ many }) => ({
   bookings: many(bookings),
@@ -196,6 +236,20 @@ export const tournamentTeamsRelations = relations(tournamentTeams, ({ one }) => 
   captain: one(customers, { fields: [tournamentTeams.captainId], references: [customers.id] }),
 }));
 
+export const membershipPlansRelations = relations(membershipPlans, ({ many }) => ({
+  memberships: many(memberships),
+}));
+
+export const membershipsRelations = relations(memberships, ({ one }) => ({
+  customer: one(customers, { fields: [memberships.customerId], references: [customers.id] }),
+  plan: one(membershipPlans, { fields: [memberships.planId], references: [membershipPlans.id] }),
+}));
+
+export const loyaltyPointsRelations = relations(loyaltyPoints, ({ one }) => ({
+  customer: one(customers, { fields: [loyaltyPoints.customerId], references: [customers.id] }),
+  booking: one(bookings, { fields: [loyaltyPoints.bookingId], references: [bookings.id] }),
+}));
+
 // Insert schemas
 export const insertCourtSchema = createInsertSchema(courts).omit({ id: true });
 export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true, totalSpend: true, totalBookings: true, noShowCount: true });
@@ -208,6 +262,9 @@ export const insertTournamentSchema = createInsertSchema(tournaments).omit({ id:
 export const insertTournamentTeamSchema = createInsertSchema(tournamentTeams).omit({ id: true, createdAt: true });
 export const insertMaintenanceLogSchema = createInsertSchema(maintenanceLogs).omit({ id: true, createdAt: true, resolvedAt: true });
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, createdAt: true });
+export const insertMembershipPlanSchema = createInsertSchema(membershipPlans).omit({ id: true, createdAt: true });
+export const insertMembershipSchema = createInsertSchema(memberships).omit({ id: true, createdAt: true });
+export const insertLoyaltyPointsSchema = createInsertSchema(loyaltyPoints).omit({ id: true, createdAt: true });
 
 // Types
 export type InsertCourt = z.infer<typeof insertCourtSchema>;
@@ -232,6 +289,12 @@ export type InsertMaintenanceLog = z.infer<typeof insertMaintenanceLogSchema>;
 export type MaintenanceLog = typeof maintenanceLogs.$inferSelect;
 export type InsertExpense = z.infer<typeof insertExpenseSchema>;
 export type Expense = typeof expenses.$inferSelect;
+export type InsertMembershipPlan = z.infer<typeof insertMembershipPlanSchema>;
+export type MembershipPlan = typeof membershipPlans.$inferSelect;
+export type InsertMembership = z.infer<typeof insertMembershipSchema>;
+export type Membership = typeof memberships.$inferSelect;
+export type InsertLoyaltyPoints = z.infer<typeof insertLoyaltyPointsSchema>;
+export type LoyaltyPoints = typeof loyaltyPoints.$inferSelect;
 
 // Extended types for frontend
 export type BookingWithDetails = Booking & {
@@ -244,6 +307,20 @@ export type CustomerWithStats = Customer & {
   reliabilityScore: number;
   isVip: boolean;
   isHighRisk: boolean;
+};
+
+export type MembershipWithPlan = Membership & {
+  plan?: MembershipPlan;
+  customer?: Customer;
+};
+
+export type CustomerLoyalty = {
+  customerId: string;
+  totalPoints: number;
+  availablePoints: number;
+  pendingPoints: number;
+  lifetimeEarned: number;
+  lifetimeRedeemed: number;
 };
 
 // Dashboard stats type

@@ -27,6 +27,7 @@ import WaitlistPage from "@/pages/waitlist";
 import Settings from "@/pages/settings";
 import Analytics from "@/pages/analytics";
 import StaffManagement from "@/pages/staff";
+import Memberships from "@/pages/memberships";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -43,6 +44,7 @@ function Router() {
       <Route path="/settings" component={Settings} />
       <Route path="/analytics" component={Analytics} />
       <Route path="/staff" component={StaffManagement} />
+      <Route path="/memberships" component={Memberships} />
       <Route component={NotFound} />
     </Switch>
   );
