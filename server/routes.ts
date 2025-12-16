@@ -1,16 +1,634 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
+import {
+  insertCourtSchema, insertCustomerSchema, insertBookingSchema,
+  insertTransactionSchema, insertWaitlistSchema, insertBlockedSlotSchema,
+  insertTournamentSchema, insertTournamentTeamSchema, insertExpenseSchema,
+  type DashboardStats, type SettlementSummary,
+} from "@shared/schema";
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // put application routes here
-  // prefix all routes with /api
+  // WebSocket setup for real-time updates
+  const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
+  const clients = new Set<WebSocket>();
 
-  // use storage to perform CRUD operations on the storage interface
-  // e.g. storage.insertUser(user) or storage.getUserByUsername(username)
+  wss.on("connection", (ws) => {
+    clients.add(ws);
+    ws.on("close", () => clients.delete(ws));
+  });
+
+  const broadcast = (type: string, payload: unknown) => {
+    const message = JSON.stringify({ type, payload });
+    clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  };
+
+  // WhatsApp notification stubs (integrate with WhatsApp Business API in production)
+  // Using WhatsApp instead of email/SMS per requirements
+  const sendWhatsAppNotification = async (phone: string, template: string, data: Record<string, unknown>) => {
+    // Stub: In production, integrate with WhatsApp Business API or Twilio WhatsApp
+    console.log(`[WhatsApp Notification] To: ${phone}, Template: ${template}`, data);
+    
+    // Return mock response for now
+    return {
+      success: true,
+      messageId: `wa_${Date.now()}`,
+      template,
+      phone,
+    };
+  };
+
+  const sendBookingConfirmation = async (phone: string, bookingDetails: {
+    bookingId: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    courtName?: string;
+    amount: number;
+    qrCode?: string;
+  }) => {
+    return sendWhatsAppNotification(phone, "booking_confirmation", {
+      ...bookingDetails,
+      message: `Your booking is confirmed for ${bookingDetails.date} at ${bookingDetails.startTime}. Your booking ID: ${bookingDetails.bookingId.slice(0, 8).toUpperCase()}`,
+    });
+  };
+
+  const sendPaymentReminder = async (phone: string, paymentDetails: {
+    bookingId: string;
+    amount: number;
+    dueDate: string;
+    paymentLink?: string;
+  }) => {
+    return sendWhatsAppNotification(phone, "payment_reminder", {
+      ...paymentDetails,
+      message: `Payment reminder: ₹${paymentDetails.amount} due for booking #${paymentDetails.bookingId.slice(0, 8).toUpperCase()}`,
+    });
+  };
+
+  const sendSlotReminder = async (phone: string, reminderDetails: {
+    bookingId: string;
+    date: string;
+    startTime: string;
+    courtName?: string;
+  }) => {
+    return sendWhatsAppNotification(phone, "slot_reminder", {
+      ...reminderDetails,
+      message: `Reminder: Your slot is coming up in 1 hour at ${reminderDetails.startTime}`,
+    });
+  };
+
+  const sendWaitlistNotification = async (phone: string, slotDetails: {
+    courtName: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+  }) => {
+    return sendWhatsAppNotification(phone, "waitlist_available", {
+      ...slotDetails,
+      message: `Good news! A slot is now available on ${slotDetails.date} at ${slotDetails.startTime}. Book now before it's gone!`,
+    });
+  };
+
+  // Dashboard stats
+  app.get("/api/stats/dashboard", async (req, res) => {
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const [allBookings, courts, customers] = await Promise.all([
+        storage.getBookings(),
+        storage.getCourts(),
+        storage.getCustomers(),
+      ]);
+
+      const todayBookings = allBookings.filter((b) => b.date === today);
+      const todayRevenue = todayBookings.reduce((sum, b) => sum + Number(b.paidAmount || 0), 0);
+      const pendingCheckIns = todayBookings.filter((b) => b.status === "confirmed").length;
+      const pendingPayments = allBookings.filter((b) => b.paymentStatus === "pending" || b.paymentStatus === "partial").length;
+
+      // Weekly revenue
+      const weeklyRevenue = [];
+      const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split("T")[0];
+        const dayBookings = allBookings.filter((b) => b.date === dateStr);
+        const revenue = dayBookings.reduce((sum, b) => sum + Number(b.paidAmount || 0), 0);
+        weeklyRevenue.push({ day: days[date.getDay()], revenue });
+      }
+
+      const stats: DashboardStats = {
+        totalBookingsToday: todayBookings.length,
+        totalRevenueToday: todayRevenue,
+        occupiedCourts: courts.filter((c) => c.isActive).length,
+        totalCourts: courts.length,
+        pendingCheckIns,
+        pendingPayments,
+        weeklyRevenue,
+        peakHours: [],
+      };
+
+      res.json(stats);
+    } catch (error) {
+      console.error("Error getting dashboard stats:", error);
+      res.status(500).json({ message: "Failed to get dashboard stats" });
+    }
+  });
+
+  // Courts
+  app.get("/api/courts", async (req, res) => {
+    try {
+      const courts = await storage.getCourts();
+      res.json(courts);
+    } catch (error) {
+      console.error("Error getting courts:", error);
+      res.status(500).json({ message: "Failed to get courts" });
+    }
+  });
+
+  app.post("/api/courts", async (req, res) => {
+    try {
+      const result = insertCourtSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.message });
+      }
+      const court = await storage.createCourt(result.data);
+      broadcast("court_created", court);
+      res.status(201).json(court);
+    } catch (error) {
+      console.error("Error creating court:", error);
+      res.status(500).json({ message: "Failed to create court" });
+    }
+  });
+
+  app.patch("/api/courts/:id", async (req, res) => {
+    try {
+      const court = await storage.updateCourt(req.params.id, req.body);
+      if (!court) {
+        return res.status(404).json({ message: "Court not found" });
+      }
+      broadcast("court_updated", court);
+      res.json(court);
+    } catch (error) {
+      console.error("Error updating court:", error);
+      res.status(500).json({ message: "Failed to update court" });
+    }
+  });
+
+  app.delete("/api/courts/:id", async (req, res) => {
+    try {
+      await storage.deleteCourt(req.params.id);
+      broadcast("court_deleted", { id: req.params.id });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting court:", error);
+      res.status(500).json({ message: "Failed to delete court" });
+    }
+  });
+
+  // Customers
+  app.get("/api/customers", async (req, res) => {
+    try {
+      const customers = await storage.getCustomers();
+      res.json(customers);
+    } catch (error) {
+      console.error("Error getting customers:", error);
+      res.status(500).json({ message: "Failed to get customers" });
+    }
+  });
+
+  app.get("/api/customers/:id", async (req, res) => {
+    try {
+      const customer = await storage.getCustomer(req.params.id);
+      if (!customer) {
+        return res.status(404).json({ message: "Customer not found" });
+      }
+      res.json(customer);
+    } catch (error) {
+      console.error("Error getting customer:", error);
+      res.status(500).json({ message: "Failed to get customer" });
+    }
+  });
+
+  app.post("/api/customers", async (req, res) => {
+    try {
+      const result = insertCustomerSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.message });
+      }
+      
+      // Check if customer with phone already exists
+      const existing = await storage.getCustomerByPhone(result.data.phone);
+      if (existing) {
+        return res.status(409).json({ message: "Customer with this phone already exists" });
+      }
+      
+      const customer = await storage.createCustomer(result.data);
+      broadcast("customer_created", customer);
+      res.status(201).json(customer);
+    } catch (error) {
+      console.error("Error creating customer:", error);
+      res.status(500).json({ message: "Failed to create customer" });
+    }
+  });
+
+  app.patch("/api/customers/:id", async (req, res) => {
+    try {
+      const customer = await storage.updateCustomer(req.params.id, req.body);
+      if (!customer) {
+        return res.status(404).json({ message: "Customer not found" });
+      }
+      broadcast("customer_updated", customer);
+      res.json(customer);
+    } catch (error) {
+      console.error("Error updating customer:", error);
+      res.status(500).json({ message: "Failed to update customer" });
+    }
+  });
+
+  // Bookings
+  app.get("/api/bookings", async (req, res) => {
+    try {
+      const { date } = req.query;
+      const bookings = date 
+        ? await storage.getBookingsByDate(date as string)
+        : await storage.getBookings();
+      res.json(bookings);
+    } catch (error) {
+      console.error("Error getting bookings:", error);
+      res.status(500).json({ message: "Failed to get bookings" });
+    }
+  });
+
+  app.get("/api/bookings/:id", async (req, res) => {
+    try {
+      const booking = await storage.getBooking(req.params.id);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      res.json(booking);
+    } catch (error) {
+      console.error("Error getting booking:", error);
+      res.status(500).json({ message: "Failed to get booking" });
+    }
+  });
+
+  app.post("/api/bookings", async (req, res) => {
+    try {
+      const result = insertBookingSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.message });
+      }
+      
+      // Calculate duration if not provided
+      const data = { ...result.data };
+      if (!data.duration && data.startTime && data.endTime) {
+        const [startHour, startMin] = data.startTime.split(":").map(Number);
+        const [endHour, endMin] = data.endTime.split(":").map(Number);
+        data.duration = (endHour * 60 + endMin) - (startHour * 60 + startMin);
+      }
+      
+      const booking = await storage.createBooking(data);
+      
+      // Create transaction if payment was made
+      if (data.paidAmount && Number(data.paidAmount) > 0) {
+        await storage.createTransaction({
+          bookingId: booking.id,
+          customerId: booking.customerId,
+          type: "booking_payment",
+          amount: data.paidAmount,
+          paymentMethod: data.paymentMethod || "cash",
+          status: "completed",
+        });
+      }
+      
+      // Send WhatsApp booking confirmation
+      const customer = await storage.getCustomer(booking.customerId);
+      if (customer?.phone) {
+        await sendBookingConfirmation(customer.phone, {
+          bookingId: booking.id,
+          date: booking.date,
+          startTime: booking.startTime,
+          endTime: booking.endTime,
+          amount: Number(booking.totalAmount),
+          qrCode: booking.qrCode || undefined,
+        });
+      }
+      
+      broadcast("booking_created", booking);
+      res.status(201).json(booking);
+    } catch (error) {
+      console.error("Error creating booking:", error);
+      res.status(500).json({ message: "Failed to create booking" });
+    }
+  });
+
+  app.patch("/api/bookings/:id", async (req, res) => {
+    try {
+      const booking = await storage.updateBooking(req.params.id, req.body);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      broadcast("booking_updated", booking);
+      res.json(booking);
+    } catch (error) {
+      console.error("Error updating booking:", error);
+      res.status(500).json({ message: "Failed to update booking" });
+    }
+  });
+
+  app.delete("/api/bookings/:id", async (req, res) => {
+    try {
+      await storage.deleteBooking(req.params.id);
+      broadcast("booking_deleted", { id: req.params.id });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting booking:", error);
+      res.status(500).json({ message: "Failed to delete booking" });
+    }
+  });
+
+  // Transactions
+  app.get("/api/transactions", async (req, res) => {
+    try {
+      const transactions = await storage.getTransactions();
+      res.json(transactions);
+    } catch (error) {
+      console.error("Error getting transactions:", error);
+      res.status(500).json({ message: "Failed to get transactions" });
+    }
+  });
+
+  app.post("/api/transactions", async (req, res) => {
+    try {
+      const result = insertTransactionSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.message });
+      }
+      const transaction = await storage.createTransaction(result.data);
+      broadcast("transaction_created", transaction);
+      res.status(201).json(transaction);
+    } catch (error) {
+      console.error("Error creating transaction:", error);
+      res.status(500).json({ message: "Failed to create transaction" });
+    }
+  });
+
+  // Settlements
+  app.get("/api/settlements", async (req, res) => {
+    try {
+      const settlements = await storage.getSettlements();
+      res.json(settlements);
+    } catch (error) {
+      console.error("Error getting settlements:", error);
+      res.status(500).json({ message: "Failed to get settlements" });
+    }
+  });
+
+  app.get("/api/settlements/summary", async (req, res) => {
+    try {
+      const settlements = await storage.getSettlements();
+      const transactions = await storage.getTransactions();
+      
+      const cashTransactions = transactions.filter(
+        (t) => t.paymentMethod === "cash" && t.type === "booking_payment"
+      );
+      const totalCashReceived = cashTransactions.reduce((sum, t) => sum + Number(t.amount), 0);
+      const commissionRate = 5;
+      const totalCommission = Math.round(totalCashReceived * (commissionRate / 100));
+      
+      const totalSettled = settlements
+        .filter((s) => s.status === "paid")
+        .reduce((sum, s) => sum + Number(s.amount), 0);
+      
+      const summary: SettlementSummary = {
+        totalEarnings: totalCashReceived,
+        totalSettled,
+        amountDue: totalCommission - totalSettled,
+        commissionRate,
+        pendingSettlements: settlements.filter((s) => s.status === "pending"),
+      };
+      
+      res.json(summary);
+    } catch (error) {
+      console.error("Error getting settlement summary:", error);
+      res.status(500).json({ message: "Failed to get settlement summary" });
+    }
+  });
+
+  // Waitlist
+  app.get("/api/waitlist", async (req, res) => {
+    try {
+      const waitlistItems = await storage.getWaitlist();
+      res.json(waitlistItems);
+    } catch (error) {
+      console.error("Error getting waitlist:", error);
+      res.status(500).json({ message: "Failed to get waitlist" });
+    }
+  });
+
+  app.post("/api/waitlist", async (req, res) => {
+    try {
+      const result = insertWaitlistSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.message });
+      }
+      const item = await storage.createWaitlistItem(result.data);
+      broadcast("waitlist_created", item);
+      res.status(201).json(item);
+    } catch (error) {
+      console.error("Error creating waitlist item:", error);
+      res.status(500).json({ message: "Failed to create waitlist item" });
+    }
+  });
+
+  app.patch("/api/waitlist/:id", async (req, res) => {
+    try {
+      const item = await storage.updateWaitlistItem(req.params.id, req.body);
+      if (!item) {
+        return res.status(404).json({ message: "Waitlist item not found" });
+      }
+      broadcast("waitlist_updated", item);
+      res.json(item);
+    } catch (error) {
+      console.error("Error updating waitlist item:", error);
+      res.status(500).json({ message: "Failed to update waitlist item" });
+    }
+  });
+
+  // Blocked Slots
+  app.get("/api/blocked-slots", async (req, res) => {
+    try {
+      const blockedSlots = await storage.getBlockedSlots();
+      res.json(blockedSlots);
+    } catch (error) {
+      console.error("Error getting blocked slots:", error);
+      res.status(500).json({ message: "Failed to get blocked slots" });
+    }
+  });
+
+  app.post("/api/blocked-slots", async (req, res) => {
+    try {
+      const result = insertBlockedSlotSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.message });
+      }
+      const slot = await storage.createBlockedSlot(result.data);
+      broadcast("blocked_slot_created", slot);
+      res.status(201).json(slot);
+    } catch (error) {
+      console.error("Error creating blocked slot:", error);
+      res.status(500).json({ message: "Failed to create blocked slot" });
+    }
+  });
+
+  app.delete("/api/blocked-slots/:id", async (req, res) => {
+    try {
+      await storage.deleteBlockedSlot(req.params.id);
+      broadcast("blocked_slot_deleted", { id: req.params.id });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting blocked slot:", error);
+      res.status(500).json({ message: "Failed to delete blocked slot" });
+    }
+  });
+
+  // Tournaments
+  app.get("/api/tournaments", async (req, res) => {
+    try {
+      const tournaments = await storage.getTournaments();
+      res.json(tournaments);
+    } catch (error) {
+      console.error("Error getting tournaments:", error);
+      res.status(500).json({ message: "Failed to get tournaments" });
+    }
+  });
+
+  app.get("/api/tournaments/:id", async (req, res) => {
+    try {
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) {
+        return res.status(404).json({ message: "Tournament not found" });
+      }
+      res.json(tournament);
+    } catch (error) {
+      console.error("Error getting tournament:", error);
+      res.status(500).json({ message: "Failed to get tournament" });
+    }
+  });
+
+  app.post("/api/tournaments", async (req, res) => {
+    try {
+      const result = insertTournamentSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.message });
+      }
+      const tournament = await storage.createTournament(result.data);
+      broadcast("tournament_created", tournament);
+      res.status(201).json(tournament);
+    } catch (error) {
+      console.error("Error creating tournament:", error);
+      res.status(500).json({ message: "Failed to create tournament" });
+    }
+  });
+
+  app.patch("/api/tournaments/:id", async (req, res) => {
+    try {
+      const tournament = await storage.updateTournament(req.params.id, req.body);
+      if (!tournament) {
+        return res.status(404).json({ message: "Tournament not found" });
+      }
+      broadcast("tournament_updated", tournament);
+      res.json(tournament);
+    } catch (error) {
+      console.error("Error updating tournament:", error);
+      res.status(500).json({ message: "Failed to update tournament" });
+    }
+  });
+
+  // Tournament Teams
+  app.get("/api/tournaments/:id/teams", async (req, res) => {
+    try {
+      const teams = await storage.getTournamentTeams(req.params.id);
+      res.json(teams);
+    } catch (error) {
+      console.error("Error getting tournament teams:", error);
+      res.status(500).json({ message: "Failed to get tournament teams" });
+    }
+  });
+
+  app.post("/api/tournaments/:id/teams", async (req, res) => {
+    try {
+      const result = insertTournamentTeamSchema.safeParse({
+        ...req.body,
+        tournamentId: req.params.id,
+      });
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.message });
+      }
+      const team = await storage.createTournamentTeam(result.data);
+      broadcast("tournament_team_created", team);
+      res.status(201).json(team);
+    } catch (error) {
+      console.error("Error creating tournament team:", error);
+      res.status(500).json({ message: "Failed to create tournament team" });
+    }
+  });
+
+  // Expenses
+  app.get("/api/expenses", async (req, res) => {
+    try {
+      const expenses = await storage.getExpenses();
+      res.json(expenses);
+    } catch (error) {
+      console.error("Error getting expenses:", error);
+      res.status(500).json({ message: "Failed to get expenses" });
+    }
+  });
+
+  app.post("/api/expenses", async (req, res) => {
+    try {
+      const result = insertExpenseSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.message });
+      }
+      const expense = await storage.createExpense(result.data);
+      broadcast("expense_created", expense);
+      res.status(201).json(expense);
+    } catch (error) {
+      console.error("Error creating expense:", error);
+      res.status(500).json({ message: "Failed to create expense" });
+    }
+  });
+
+  app.delete("/api/expenses/:id", async (req, res) => {
+    try {
+      await storage.deleteExpense(req.params.id);
+      broadcast("expense_deleted", { id: req.params.id });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting expense:", error);
+      res.status(500).json({ message: "Failed to delete expense" });
+    }
+  });
+
+  // Maintenance Logs
+  app.get("/api/maintenance", async (req, res) => {
+    try {
+      const logs = await storage.getMaintenanceLogs();
+      res.json(logs);
+    } catch (error) {
+      console.error("Error getting maintenance logs:", error);
+      res.status(500).json({ message: "Failed to get maintenance logs" });
+    }
+  });
 
   return httpServer;
 }
