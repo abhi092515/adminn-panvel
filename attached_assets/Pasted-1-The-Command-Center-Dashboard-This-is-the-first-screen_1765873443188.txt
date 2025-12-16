@@ -1,0 +1,95 @@
+1. The "Command Center" (Dashboard)
+This is the first screen the client sees. It needs to tell them the health of their business at a glance.
+
+Live Status: How many courts/turfs are currently occupied vs. free.
+
+Today’s Metrics: Total Bookings, Total Revenue, Check-ins pending.
+
+Quick Actions: "New Booking," "Block Slot," "Add Expense."
+
+Visual Graphs: Weekly revenue trend, Peak hours visualization (Heatmap).
+
+2. Booking Management (The Core)
+The heart of the system. It needs to be fast and intuitive for receptionists.
+
+Interactive Calendar: A drag-and-drop calendar view (Day/Week/Month view) showing all courts/turfs side-by-side.
+
+Booking Status: Color-coded slots (Confirmed, Pending Payment, Cancelled, Checked-In, Completed).
+
+Slot Blocking: Ability to manually block slots for maintenance or private events.
+
+Walk-in Booking: A quick form to book a slot for a customer standing at the desk (collect cash/UPI).
+
+Reschedule/Cancel: Logic to handle refunds or wallet credits if a booking is moved.
+
+Historical Data: Filter bookings by Date Range, Sport, or Specific Court to see past records.
+
+3. Financials & Settlements (Crucial for You)
+This addresses your specific requirement about payments and settlements.
+
+Transaction Logs: A master list of every payment received from customers (Cash, UPI, Credit Card, Gateway).
+
+Invoice Generation: Auto-generate PDF receipts for customers.
+
+Expense Tracker: Allow the venue to log their own costs (Electricity, Staff salaries) to see net profit.
+
+Platform Settlements (The "Pay You" Feature):
+
+Commission Calculator: Auto-calculate how much they owe you (e.g., 5% per booking or a monthly subscription).
+
+Wallet/Ledger: A digital ledger showing "Total Earnings," "Amount Settled," and "Amount Due to Platform."
+
+Payment Gateway: A "Pay Now" button allowing the venue owner to transfer the due amount to you directly via the dashboard.
+
+Settlement History: A history of payouts they have made to you with downloadable invoices.
+
+4. Customer Relationship Management (CRM)
+"Who is the customer?"
+
+Customer Database: List of all users who have ever booked.
+
+Customer Profile: Click on a name to see:
+
+Contact details (Phone/Email).
+
+Booking history (Total spend, favorite sport, frequency).
+
+No-show history (Reliability score).
+
+Membership/Subscriptions: Management of monthly passes or loyalty points for regular players.
+
+Blacklist: Ability to ban abusive customers from making future bookings.
+
+5. Tournament & League Management
+Since sports venues often host leagues, this is a high-value feature.
+
+Tournament Setup: Create a tournament page with entry fees and max teams.
+
+Team Registration: Manage team names and player lists.
+
+Fixture Scheduling: Assign matches to specific courts/times automatically.
+
+Scoreboard Entry: Admin can update scores which reflect on the user-side app (if you have one).
+
+6. Venue & Inventory Settings
+Court/Turf Management: Add new courts, rename them, and set specific pricing for each.
+
+Dynamic Pricing:
+
+Peak vs. Off-Peak: Set higher prices for weekends/evenings.
+
+Slot Duration: Prices for 60 mins vs 90 mins.
+
+Inventory/Equipment: If they rent out bats, balls, or shoes, a simple tracker to manage stock and rental fees.
+
+7. Staff & Permissions (RBAC)
+Role Management: The "Owner" sees everything. The "Receptionist" might only see Bookings and not the Total Revenue or Settlement data.
+
+Shift Management: Track which staff member booked which slot (for accountability).
+
+8. Analytics & Reports
+Occupancy Reports: Which days are dead? Which hours are busiest?
+
+Revenue Reports: Monthly/Yearly financial breakdown.
+
+Customer Retention: How many new vs. returning customers.

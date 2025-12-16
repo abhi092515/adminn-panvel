@@ -1,0 +1,72 @@
+The Concept: "Companion Mode"
+The Admin Panel will have two views: the Desktop View (Command Center) and the Mobile View (Scanner & Quick Actions).
+
+1. How the Workflow Happens
+The Setup: The receptionist sits at the desk with the Laptop/PC open showing the Booking Dashboard.
+
+The Trigger: A customer walks in. The receptionist picks up their own mobile phone (which is logged into the Admin website).
+
+The Action: On the mobile, they tap a big floating "Scan QR" button. The camera opens.
+
+The Scan: They point the phone at the customer's WhatsApp/Ticket.
+
+The Sync (The Magic Moment):
+
+The phone beeps/vibrates (Success!).
+
+Instantly, on the Laptop screen in front of them, the booking status automatically flips from "Pending" to "Checked In" (Green) without them touching the mouse or refreshing the page.
+
+If payment is pending, the Laptop screen pops up a red alert: "Collect ₹500 Balance."
+
+2. Technical Implementation Features
+To make this user-friendly, we need to focus on these specific technical aspects:
+
+A. Progressive Web App (PWA)
+
+You don't need to build a separate Android/iOS app. Build the Admin Panel as a PWA.
+
+This allows the admin to "Install" the website on their phone home screen. It will look and feel like a native app, access the camera permissions easily, and run smoothly.
+
+B. Real-Time WebSockets (Socket.io)
+
+This is the most critical tech stack requirement.
+
+When the phone scans the code, it sends a signal to the server. The server uses WebSockets to push that update immediately to the open Laptop dashboard.
+
+Result: Zero latency. It feels like magic to the user.
+
+C. "Scan-to-Action" Logic When the QR is scanned, the mobile screen shouldn't just say "Done." It should act as a mini-controller.
+
+Scenario: Admin scans a code.
+
+Mobile Screen shows: "Booking Valid: Court A."
+
+Mobile Options:
+
+[Check In] (Primary Button)
+
+[Add Water Bottle] (Upsell)
+
+[Report Issue]
+
+3. Why this is better than Hardware Scanners?
+Mobility: The admin can walk to the gate, the parking lot, or the specific turf to check people in. They aren't chained to the desk cable.
+
+Cost: Hardware scanners cost money and break. Phones are already owned by staff.
+
+Context: A hardware scanner just inputs numbers. A phone screen can show details (e.g., "This is a VIP customer" or "This customer is blacklisted") right in the palm of the hand immediately after scanning.
+
+4. Advanced "Mobile Admin" Features
+Since the admin is already using their phone to scan, you can add a few more "on-the-go" features to the mobile view:
+
+Payment Collection via UPI:
+
+Admin scans the user's ticket -> System says "₹200 Pending."
+
+Admin clicks "Collect UPI" on their mobile.
+
+It opens the admin's UPI app (GPay/PhonePe) or generates a Dynamic QR code on the admin's phone screen for the customer to scan and pay right there.
+
+Court Photo Upload:
+
+If a customer complains "The net is broken," the admin walks to the court, takes a photo with the mobile admin panel, and it instantly attaches to the "Maintenance Log" on the main server.
