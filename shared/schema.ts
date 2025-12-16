@@ -136,6 +136,24 @@ export const tournamentTeams = pgTable("tournament_teams", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Tournament matches table
+export const tournamentMatches = pgTable("tournament_matches", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tournamentId: varchar("tournament_id").notNull().references(() => tournaments.id),
+  round: integer("round").notNull().default(1), // 1, 2, 3... (1=first round, etc)
+  matchNumber: integer("match_number").notNull(), // match order within round
+  team1Id: varchar("team1_id").references(() => tournamentTeams.id),
+  team2Id: varchar("team2_id").references(() => tournamentTeams.id),
+  team1Score: integer("team1_score").default(0),
+  team2Score: integer("team2_score").default(0),
+  winnerId: varchar("winner_id").references(() => tournamentTeams.id),
+  status: text("status").notNull().default("scheduled"), // scheduled, live, completed
+  scheduledTime: text("scheduled_time"), // ISO time
+  courtId: varchar("court_id").references(() => courts.id),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Maintenance log table
 export const maintenanceLogs = pgTable("maintenance_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -229,11 +247,20 @@ export const transactionsRelations = relations(transactions, ({ one }) => ({
 
 export const tournamentsRelations = relations(tournaments, ({ many }) => ({
   teams: many(tournamentTeams),
+  matches: many(tournamentMatches),
 }));
 
 export const tournamentTeamsRelations = relations(tournamentTeams, ({ one }) => ({
   tournament: one(tournaments, { fields: [tournamentTeams.tournamentId], references: [tournaments.id] }),
   captain: one(customers, { fields: [tournamentTeams.captainId], references: [customers.id] }),
+}));
+
+export const tournamentMatchesRelations = relations(tournamentMatches, ({ one }) => ({
+  tournament: one(tournaments, { fields: [tournamentMatches.tournamentId], references: [tournaments.id] }),
+  team1: one(tournamentTeams, { fields: [tournamentMatches.team1Id], references: [tournamentTeams.id] }),
+  team2: one(tournamentTeams, { fields: [tournamentMatches.team2Id], references: [tournamentTeams.id] }),
+  winner: one(tournamentTeams, { fields: [tournamentMatches.winnerId], references: [tournamentTeams.id] }),
+  court: one(courts, { fields: [tournamentMatches.courtId], references: [courts.id] }),
 }));
 
 export const membershipPlansRelations = relations(membershipPlans, ({ many }) => ({
@@ -260,6 +287,7 @@ export const insertWaitlistSchema = createInsertSchema(waitlist).omit({ id: true
 export const insertBlockedSlotSchema = createInsertSchema(blockedSlots).omit({ id: true, createdAt: true });
 export const insertTournamentSchema = createInsertSchema(tournaments).omit({ id: true, createdAt: true });
 export const insertTournamentTeamSchema = createInsertSchema(tournamentTeams).omit({ id: true, createdAt: true });
+export const insertTournamentMatchSchema = createInsertSchema(tournamentMatches).omit({ id: true, createdAt: true });
 export const insertMaintenanceLogSchema = createInsertSchema(maintenanceLogs).omit({ id: true, createdAt: true, resolvedAt: true });
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, createdAt: true });
 export const insertMembershipPlanSchema = createInsertSchema(membershipPlans).omit({ id: true, createdAt: true });
@@ -285,6 +313,8 @@ export type InsertTournament = z.infer<typeof insertTournamentSchema>;
 export type Tournament = typeof tournaments.$inferSelect;
 export type InsertTournamentTeam = z.infer<typeof insertTournamentTeamSchema>;
 export type TournamentTeam = typeof tournamentTeams.$inferSelect;
+export type InsertTournamentMatch = z.infer<typeof insertTournamentMatchSchema>;
+export type TournamentMatch = typeof tournamentMatches.$inferSelect;
 export type InsertMaintenanceLog = z.infer<typeof insertMaintenanceLogSchema>;
 export type MaintenanceLog = typeof maintenanceLogs.$inferSelect;
 export type InsertExpense = z.infer<typeof insertExpenseSchema>;

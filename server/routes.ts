@@ -5,7 +5,7 @@ import { storage } from "./storage";
 import {
   insertCourtSchema, insertCustomerSchema, insertBookingSchema,
   insertTransactionSchema, insertWaitlistSchema, insertBlockedSlotSchema,
-  insertTournamentSchema, insertTournamentTeamSchema, insertExpenseSchema,
+  insertTournamentSchema, insertTournamentTeamSchema, insertTournamentMatchSchema, insertExpenseSchema,
   insertMembershipPlanSchema, insertMembershipSchema, insertLoyaltyPointsSchema,
   type DashboardStats, type SettlementSummary,
 } from "@shared/schema";
@@ -720,6 +720,110 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error creating tournament team:", error);
       res.status(500).json({ message: "Failed to create tournament team" });
+    }
+  });
+
+  // Tournament Matches
+  app.get("/api/tournaments/:id/matches", async (req, res) => {
+    try {
+      const matches = await storage.getTournamentMatches(req.params.id);
+      // Enrich with team names
+      const teams = await storage.getTournamentTeams(req.params.id);
+      const enrichedMatches = matches.map(match => ({
+        ...match,
+        team1: teams.find(t => t.id === match.team1Id),
+        team2: teams.find(t => t.id === match.team2Id),
+        winner: teams.find(t => t.id === match.winnerId),
+      }));
+      res.json(enrichedMatches);
+    } catch (error) {
+      console.error("Error getting tournament matches:", error);
+      res.status(500).json({ message: "Failed to get tournament matches" });
+    }
+  });
+
+  app.post("/api/tournaments/:id/matches", async (req, res) => {
+    try {
+      const result = insertTournamentMatchSchema.safeParse({
+        ...req.body,
+        tournamentId: req.params.id,
+      });
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.message });
+      }
+      const match = await storage.createTournamentMatch(result.data);
+      // Enrich with team data
+      const teams = await storage.getTournamentTeams(req.params.id);
+      const enrichedMatch = {
+        ...match,
+        team1: teams.find(t => t.id === match.team1Id),
+        team2: teams.find(t => t.id === match.team2Id),
+      };
+      broadcast("match_created", enrichedMatch);
+      res.status(201).json(enrichedMatch);
+    } catch (error) {
+      console.error("Error creating tournament match:", error);
+      res.status(500).json({ message: "Failed to create tournament match" });
+    }
+  });
+
+  app.patch("/api/tournaments/:tournamentId/matches/:matchId", async (req, res) => {
+    try {
+      const match = await storage.updateTournamentMatch(req.params.matchId, req.body);
+      if (!match) {
+        return res.status(404).json({ message: "Match not found" });
+      }
+      // Get teams for enriched response
+      const teams = await storage.getTournamentTeams(req.params.tournamentId);
+      const enrichedMatch = {
+        ...match,
+        team1: teams.find(t => t.id === match.team1Id),
+        team2: teams.find(t => t.id === match.team2Id),
+        winner: teams.find(t => t.id === match.winnerId),
+      };
+      broadcast("match_updated", enrichedMatch);
+      res.json(enrichedMatch);
+    } catch (error) {
+      console.error("Error updating tournament match:", error);
+      res.status(500).json({ message: "Failed to update tournament match" });
+    }
+  });
+
+  // Live score update - special endpoint for real-time score changes
+  app.post("/api/tournaments/:tournamentId/matches/:matchId/score", async (req, res) => {
+    try {
+      const { team1Score, team2Score } = req.body;
+      const match = await storage.updateTournamentMatch(req.params.matchId, {
+        team1Score,
+        team2Score,
+        status: "live",
+      });
+      if (!match) {
+        return res.status(404).json({ message: "Match not found" });
+      }
+      // Get teams for enriched response
+      const teams = await storage.getTournamentTeams(req.params.tournamentId);
+      const enrichedMatch = {
+        ...match,
+        team1: teams.find(t => t.id === match.team1Id),
+        team2: teams.find(t => t.id === match.team2Id),
+      };
+      broadcast("score_updated", enrichedMatch);
+      res.json(enrichedMatch);
+    } catch (error) {
+      console.error("Error updating match score:", error);
+      res.status(500).json({ message: "Failed to update score" });
+    }
+  });
+
+  app.delete("/api/tournaments/:tournamentId/matches/:matchId", async (req, res) => {
+    try {
+      await storage.deleteTournamentMatch(req.params.matchId);
+      broadcast("match_deleted", { id: req.params.matchId, tournamentId: req.params.tournamentId });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting tournament match:", error);
+      res.status(500).json({ message: "Failed to delete tournament match" });
     }
   });
 

@@ -2,7 +2,7 @@ import { db } from "./db";
 import { eq, and, desc, asc, gte, lte, sql, sum } from "drizzle-orm";
 import {
   users, courts, customers, bookings, transactions, settlements,
-  waitlist, blockedSlots, tournaments, tournamentTeams, maintenanceLogs, expenses,
+  waitlist, blockedSlots, tournaments, tournamentTeams, tournamentMatches, maintenanceLogs, expenses,
   membershipPlans, memberships, loyaltyPoints,
   type User, type UpsertUser,
   type Court, type InsertCourt,
@@ -14,6 +14,7 @@ import {
   type BlockedSlot, type InsertBlockedSlot,
   type Tournament, type InsertTournament,
   type TournamentTeam, type InsertTournamentTeam,
+  type TournamentMatch, type InsertTournamentMatch,
   type MaintenanceLog, type InsertMaintenanceLog,
   type Expense, type InsertExpense,
   type MembershipPlan, type InsertMembershipPlan,
@@ -81,6 +82,13 @@ export interface IStorage {
   // Tournament Teams
   getTournamentTeams(tournamentId: string): Promise<TournamentTeam[]>;
   createTournamentTeam(team: InsertTournamentTeam): Promise<TournamentTeam>;
+
+  // Tournament Matches
+  getTournamentMatches(tournamentId: string): Promise<TournamentMatch[]>;
+  getTournamentMatch(id: string): Promise<TournamentMatch | undefined>;
+  createTournamentMatch(match: InsertTournamentMatch): Promise<TournamentMatch>;
+  updateTournamentMatch(id: string, match: Partial<InsertTournamentMatch>): Promise<TournamentMatch | undefined>;
+  deleteTournamentMatch(id: string): Promise<void>;
 
   // Maintenance Logs
   getMaintenanceLogs(): Promise<MaintenanceLog[]>;
@@ -311,6 +319,32 @@ export class DatabaseStorage implements IStorage {
   async createTournamentTeam(team: InsertTournamentTeam): Promise<TournamentTeam> {
     const [created] = await db.insert(tournamentTeams).values(team).returning();
     return created;
+  }
+
+  // Tournament Matches
+  async getTournamentMatches(tournamentId: string): Promise<TournamentMatch[]> {
+    return db.select().from(tournamentMatches)
+      .where(eq(tournamentMatches.tournamentId, tournamentId))
+      .orderBy(asc(tournamentMatches.round), asc(tournamentMatches.matchNumber));
+  }
+
+  async getTournamentMatch(id: string): Promise<TournamentMatch | undefined> {
+    const [match] = await db.select().from(tournamentMatches).where(eq(tournamentMatches.id, id));
+    return match;
+  }
+
+  async createTournamentMatch(match: InsertTournamentMatch): Promise<TournamentMatch> {
+    const [created] = await db.insert(tournamentMatches).values(match).returning();
+    return created;
+  }
+
+  async updateTournamentMatch(id: string, match: Partial<InsertTournamentMatch>): Promise<TournamentMatch | undefined> {
+    const [updated] = await db.update(tournamentMatches).set(match).where(eq(tournamentMatches.id, id)).returning();
+    return updated;
+  }
+
+  async deleteTournamentMatch(id: string): Promise<void> {
+    await db.delete(tournamentMatches).where(eq(tournamentMatches.id, id));
   }
 
   // Maintenance Logs

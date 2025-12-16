@@ -37,13 +37,17 @@ import {
   CheckCircle,
   Clock,
   Target,
+  Minus,
+  Loader2,
+  LayoutGrid,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import type { Tournament, TournamentTeam } from "@shared/schema";
+import type { Tournament, TournamentTeam, TournamentMatch } from "@shared/schema";
 import { insertTournamentSchema } from "@shared/schema";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { SPORTS } from "@/lib/constants";
@@ -90,7 +94,13 @@ function TournamentStatusBadge({ status }: { status: string }) {
   );
 }
 
-function TournamentCard({ tournament }: { tournament: Tournament }) {
+type MatchWithTeams = TournamentMatch & {
+  team1?: TournamentTeam;
+  team2?: TournamentTeam;
+  winner?: TournamentTeam;
+};
+
+function TournamentCard({ tournament, onOpenScoreboard }: { tournament: Tournament; onOpenScoreboard: (t: Tournament) => void }) {
   const { data: teams } = useQuery<TournamentTeam[]>({
     queryKey: ["/api/tournaments", tournament.id, "teams"],
   });
@@ -98,8 +108,14 @@ function TournamentCard({ tournament }: { tournament: Tournament }) {
   const registeredTeams = teams?.length || 0;
   const spotsLeft = tournament.maxTeams - registeredTeams;
 
+  const handleClick = () => {
+    if (onOpenScoreboard) {
+      onOpenScoreboard(tournament);
+    }
+  };
+
   return (
-    <Card className="hover-elevate cursor-pointer" data-testid={`tournament-card-${tournament.id}`}>
+    <Card className="hover-elevate cursor-pointer" data-testid={`tournament-card-${tournament.id}`} onClick={handleClick}>
       <CardContent className="p-6">
         <div className="flex items-start justify-between mb-4">
           <div>
@@ -135,24 +151,475 @@ function TournamentCard({ tournament }: { tournament: Tournament }) {
         </div>
 
         {tournament.status === "upcoming" && spotsLeft > 0 && (
-          <div className="flex items-center justify-between p-3 bg-muted rounded-md">
+          <div className="flex items-center justify-between gap-2 p-3 bg-muted rounded-md">
             <span className="text-sm">
               {spotsLeft} spot{spotsLeft !== 1 ? "s" : ""} remaining
             </span>
-            <Button size="sm" data-testid="button-view-tournament">
+            <Button size="sm" data-testid="button-view-tournament" onClick={(e) => { e.stopPropagation(); handleClick(); }}>
               View Details
             </Button>
           </div>
         )}
 
         {tournament.status === "ongoing" && (
-          <Button className="w-full" variant="outline" data-testid="button-update-scores">
+          <Button className="w-full" variant="outline" data-testid="button-update-scores" onClick={(e) => { e.stopPropagation(); handleClick(); }}>
             <Target className="h-4 w-4 mr-2" />
             Update Scores
           </Button>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function MatchCard({ match, onUpdateScore }: { match: MatchWithTeams; onUpdateScore: (matchId: string, team1Score: number, team2Score: number) => void }) {
+  const statusColors: Record<string, string> = {
+    scheduled: "bg-gray-100 dark:bg-gray-800",
+    live: "bg-green-50 dark:bg-green-950 border-green-500",
+    completed: "bg-muted",
+  };
+
+  return (
+    <Card className={`${statusColors[match.status] || ""} ${match.status === "live" ? "border-2" : ""}`} data-testid={`match-card-${match.id}`}>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center justify-between flex-1 gap-2">
+            <div className="flex-1 text-center">
+              <p className={`font-medium ${match.winnerId === match.team1Id ? "text-green-600 dark:text-green-400" : ""}`}>
+                {match.team1?.name || "Team 1"}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 px-4 py-2 bg-background rounded-lg">
+              {match.status === "completed" || match.status === "live" ? (
+                <>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    disabled={match.status === "completed"}
+                    onClick={() => onUpdateScore(match.id, Math.max(0, (match.team1Score || 0) - 1), match.team2Score || 0)}
+                    data-testid="button-team1-minus"
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <span className="text-2xl font-bold min-w-12 text-center" data-testid="text-team1-score">
+                    {match.team1Score || 0}
+                  </span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    disabled={match.status === "completed"}
+                    onClick={() => onUpdateScore(match.id, (match.team1Score || 0) + 1, match.team2Score || 0)}
+                    data-testid="button-team1-plus"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </>
+              ) : (
+                <span className="text-lg text-muted-foreground">VS</span>
+              )}
+              <span className="text-muted-foreground">-</span>
+              {match.status === "completed" || match.status === "live" ? (
+                <>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    disabled={match.status === "completed"}
+                    onClick={() => onUpdateScore(match.id, match.team1Score || 0, Math.max(0, (match.team2Score || 0) - 1))}
+                    data-testid="button-team2-minus"
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <span className="text-2xl font-bold min-w-12 text-center" data-testid="text-team2-score">
+                    {match.team2Score || 0}
+                  </span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    disabled={match.status === "completed"}
+                    onClick={() => onUpdateScore(match.id, match.team1Score || 0, (match.team2Score || 0) + 1)}
+                    data-testid="button-team2-plus"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </>
+              ) : null}
+            </div>
+            <div className="flex-1 text-center">
+              <p className={`font-medium ${match.winnerId === match.team2Id ? "text-green-600 dark:text-green-400" : ""}`}>
+                {match.team2?.name || "Team 2"}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            {match.status === "live" && (
+              <Badge variant="default" className="bg-green-500 animate-pulse">
+                <Play className="h-3 w-3 mr-1" />
+                LIVE
+              </Badge>
+            )}
+            {match.status === "scheduled" && (
+              <Badge variant="secondary">
+                <Clock className="h-3 w-3 mr-1" />
+                Scheduled
+              </Badge>
+            )}
+            {match.status === "completed" && (
+              <Badge variant="outline">
+                <CheckCircle className="h-3 w-3 mr-1" />
+                Final
+              </Badge>
+            )}
+            <span className="text-xs text-muted-foreground">Round {match.round}</span>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TournamentScoreboard({
+  tournament,
+  open,
+  onClose,
+}: {
+  tournament: Tournament | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const [addMatchOpen, setAddMatchOpen] = useState(false);
+  const [selectedTeam1, setSelectedTeam1] = useState("");
+  const [selectedTeam2, setSelectedTeam2] = useState("");
+  const [matchRound, setMatchRound] = useState(1);
+
+  const { data: teams = [] } = useQuery<TournamentTeam[]>({
+    queryKey: ["/api/tournaments", tournament?.id, "teams"],
+    enabled: !!tournament?.id,
+  });
+
+  const { data: matches = [], isLoading: matchesLoading } = useQuery<MatchWithTeams[]>({
+    queryKey: ["/api/tournaments", tournament?.id, "matches"],
+    enabled: !!tournament?.id,
+  });
+
+  const createMatchMutation = useMutation({
+    mutationFn: async (data: { team1Id: string; team2Id: string; round: number; matchNumber: number }) => {
+      return apiRequest("POST", `/api/tournaments/${tournament?.id}/matches`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournament?.id, "matches"] });
+      setAddMatchOpen(false);
+      setSelectedTeam1("");
+      setSelectedTeam2("");
+      toast({ title: "Match created" });
+    },
+    onError: () => {
+      toast({ title: "Failed to create match", variant: "destructive" });
+    },
+  });
+
+  const updateScoreMutation = useMutation({
+    mutationFn: async ({ matchId, team1Score, team2Score }: { matchId: string; team1Score: number; team2Score: number }) => {
+      return apiRequest("POST", `/api/tournaments/${tournament?.id}/matches/${matchId}/score`, {
+        team1Score,
+        team2Score,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournament?.id, "matches"] });
+    },
+    onError: () => {
+      toast({ title: "Failed to update score", variant: "destructive" });
+    },
+  });
+
+  const completeMatchMutation = useMutation({
+    mutationFn: async ({ matchId, winnerId }: { matchId: string; winnerId: string }) => {
+      return apiRequest("PATCH", `/api/tournaments/${tournament?.id}/matches/${matchId}`, {
+        status: "completed",
+        winnerId,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournament?.id, "matches"] });
+      toast({ title: "Match completed" });
+    },
+  });
+
+  const startMatchMutation = useMutation({
+    mutationFn: async (matchId: string) => {
+      return apiRequest("PATCH", `/api/tournaments/${tournament?.id}/matches/${matchId}`, {
+        status: "live",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournament?.id, "matches"] });
+      toast({ title: "Match started" });
+    },
+  });
+
+  const handleUpdateScore = (matchId: string, team1Score: number, team2Score: number) => {
+    updateScoreMutation.mutate({ matchId, team1Score, team2Score });
+  };
+
+  const handleCreateMatch = () => {
+    if (!selectedTeam1 || !selectedTeam2) {
+      toast({ title: "Please select both teams", variant: "destructive" });
+      return;
+    }
+    const matchNumber = matches.filter(m => m.round === matchRound).length + 1;
+    createMatchMutation.mutate({
+      team1Id: selectedTeam1,
+      team2Id: selectedTeam2,
+      round: matchRound,
+      matchNumber,
+    });
+  };
+
+  // Group matches by round
+  const matchesByRound = matches.reduce((acc, match) => {
+    const round = match.round || 1;
+    if (!acc[round]) acc[round] = [];
+    acc[round].push(match);
+    return acc;
+  }, {} as Record<number, MatchWithTeams[]>);
+
+  const rounds = Object.keys(matchesByRound).map(Number).sort((a, b) => a - b);
+  const liveMatches = matches.filter(m => m.status === "live");
+  const scheduledMatches = matches.filter(m => m.status === "scheduled");
+  const completedMatches = matches.filter(m => m.status === "completed");
+
+  if (!tournament) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Trophy className="h-5 w-5 text-yellow-500" />
+            {tournament.name} - Scoreboard
+          </DialogTitle>
+          <DialogDescription>
+            {tournament.sport} | {tournament.startDate} to {tournament.endDate}
+          </DialogDescription>
+        </DialogHeader>
+
+        <Tabs defaultValue="matches" className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="matches" data-testid="tab-matches">
+              <LayoutGrid className="h-4 w-4 mr-2" />
+              Matches ({matches.length})
+            </TabsTrigger>
+            <TabsTrigger value="live" data-testid="tab-live">
+              <Play className="h-4 w-4 mr-2" />
+              Live ({liveMatches.length})
+            </TabsTrigger>
+            <TabsTrigger value="teams" data-testid="tab-teams">
+              <Users className="h-4 w-4 mr-2" />
+              Teams ({teams.length})
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="matches" className="space-y-4 mt-4">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h3 className="font-semibold">All Matches</h3>
+              <Button size="sm" onClick={() => setAddMatchOpen(true)} data-testid="button-add-match">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Match
+              </Button>
+            </div>
+
+            {matchesLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : matches.length === 0 ? (
+              <Card>
+                <CardContent className="py-8 text-center text-muted-foreground">
+                  <Target className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>No matches scheduled yet</p>
+                  <Button className="mt-4" onClick={() => setAddMatchOpen(true)}>
+                    Create First Match
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-6">
+                {rounds.map((round) => (
+                  <div key={round}>
+                    <h4 className="text-sm font-medium text-muted-foreground mb-2">
+                      Round {round}
+                    </h4>
+                    <div className="space-y-2">
+                      {matchesByRound[round].map((match) => (
+                        <div key={match.id} className="flex items-center gap-2">
+                          <div className="flex-1">
+                            <MatchCard match={match} onUpdateScore={handleUpdateScore} />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            {match.status === "scheduled" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => startMatchMutation.mutate(match.id)}
+                                data-testid={`button-start-match-${match.id}`}
+                              >
+                                <Play className="h-3 w-3" />
+                              </Button>
+                            )}
+                            {match.status === "live" && match.team1Id && match.team2Id && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-xs"
+                                  onClick={() => completeMatchMutation.mutate({ matchId: match.id, winnerId: match.team1Id! })}
+                                  data-testid={`button-team1-wins-${match.id}`}
+                                >
+                                  {(match.team1?.name?.slice(0, 6) || "Team 1")} Wins
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-xs"
+                                  onClick={() => completeMatchMutation.mutate({ matchId: match.id, winnerId: match.team2Id! })}
+                                  data-testid={`button-team2-wins-${match.id}`}
+                                >
+                                  {(match.team2?.name?.slice(0, 6) || "Team 2")} Wins
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add Match Dialog */}
+            <Dialog open={addMatchOpen} onOpenChange={setAddMatchOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Schedule New Match</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium">Round</label>
+                    <Select value={String(matchRound)} onValueChange={(v) => setMatchRound(Number(v))}>
+                      <SelectTrigger data-testid="select-round">
+                        <SelectValue placeholder="Select round" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[1, 2, 3, 4, 5, 6].map((r) => (
+                          <SelectItem key={r} value={String(r)}>
+                            Round {r}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Team 1</label>
+                    <Select value={selectedTeam1} onValueChange={setSelectedTeam1}>
+                      <SelectTrigger data-testid="select-team1">
+                        <SelectValue placeholder="Select team 1" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {teams.filter(t => t.id !== selectedTeam2).map((team) => (
+                          <SelectItem key={team.id} value={team.id}>
+                            {team.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Team 2</label>
+                    <Select value={selectedTeam2} onValueChange={setSelectedTeam2}>
+                      <SelectTrigger data-testid="select-team2">
+                        <SelectValue placeholder="Select team 2" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {teams.filter(t => t.id !== selectedTeam1).map((team) => (
+                          <SelectItem key={team.id} value={team.id}>
+                            {team.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    className="w-full"
+                    onClick={handleCreateMatch}
+                    disabled={createMatchMutation.isPending}
+                    data-testid="button-submit-match"
+                  >
+                    {createMatchMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Plus className="h-4 w-4 mr-2" />
+                    )}
+                    Create Match
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </TabsContent>
+
+          <TabsContent value="live" className="space-y-4 mt-4">
+            <h3 className="font-semibold">Live Matches</h3>
+            {liveMatches.length === 0 ? (
+              <Card>
+                <CardContent className="py-8 text-center text-muted-foreground">
+                  <Play className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>No live matches at the moment</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {liveMatches.map((match) => (
+                  <MatchCard key={match.id} match={match} onUpdateScore={handleUpdateScore} />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="teams" className="space-y-4 mt-4">
+            <h3 className="font-semibold">Registered Teams</h3>
+            {teams.length === 0 ? (
+              <Card>
+                <CardContent className="py-8 text-center text-muted-foreground">
+                  <Users className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>No teams registered yet</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {teams.map((team) => (
+                  <Card key={team.id} data-testid={`team-card-${team.id}`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <h4 className="font-medium">{team.name}</h4>
+                          <p className="text-sm text-muted-foreground">
+                            {Array.isArray(team.players) ? (team.players as string[]).length : 0} players
+                          </p>
+                        </div>
+                        <Badge variant={team.isPaid ? "default" : "secondary"}>
+                          {team.isPaid ? "Paid" : "Pending"}
+                        </Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -367,6 +834,8 @@ function CreateTournamentDialog({
 
 export default function Tournaments() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
+  const [scoreboardOpen, setScoreboardOpen] = useState(false);
 
   const { data: tournaments, isLoading } = useQuery<Tournament[]>({
     queryKey: ["/api/tournaments"],
@@ -375,6 +844,11 @@ export default function Tournaments() {
   const upcomingTournaments = tournaments?.filter((t) => t.status === "upcoming") || [];
   const ongoingTournaments = tournaments?.filter((t) => t.status === "ongoing") || [];
   const completedTournaments = tournaments?.filter((t) => t.status === "completed") || [];
+
+  const handleOpenScoreboard = (tournament: Tournament) => {
+    setSelectedTournament(tournament);
+    setScoreboardOpen(true);
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -407,7 +881,7 @@ export default function Tournaments() {
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {ongoingTournaments.map((tournament) => (
-                  <TournamentCard key={tournament.id} tournament={tournament} />
+                  <TournamentCard key={tournament.id} tournament={tournament} onOpenScoreboard={handleOpenScoreboard} />
                 ))}
               </div>
             </div>
@@ -421,7 +895,7 @@ export default function Tournaments() {
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {upcomingTournaments.map((tournament) => (
-                  <TournamentCard key={tournament.id} tournament={tournament} />
+                  <TournamentCard key={tournament.id} tournament={tournament} onOpenScoreboard={handleOpenScoreboard} />
                 ))}
               </div>
             </div>
@@ -435,7 +909,7 @@ export default function Tournaments() {
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {completedTournaments.map((tournament) => (
-                  <TournamentCard key={tournament.id} tournament={tournament} />
+                  <TournamentCard key={tournament.id} tournament={tournament} onOpenScoreboard={handleOpenScoreboard} />
                 ))}
               </div>
             </div>
@@ -462,6 +936,12 @@ export default function Tournaments() {
       <CreateTournamentDialog
         open={createDialogOpen}
         onClose={() => setCreateDialogOpen(false)}
+      />
+
+      <TournamentScoreboard
+        tournament={selectedTournament}
+        open={scoreboardOpen}
+        onClose={() => setScoreboardOpen(false)}
       />
     </div>
   );
