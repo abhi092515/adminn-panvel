@@ -97,6 +97,27 @@ export async function registerRoutes(
     });
   };
 
+  const sendNoShowWarning = async (phone: string, noShowCount: number) => {
+    let warningLevel = "warning";
+    let consequence = "";
+    
+    if (noShowCount >= 5) {
+      warningLevel = "blacklisted";
+      consequence = "Your account has been restricted due to multiple no-shows.";
+    } else if (noShowCount >= 3) {
+      warningLevel = "high_risk";
+      consequence = `You have ${5 - noShowCount} more no-shows before your account is restricted.`;
+    } else {
+      consequence = "Please make sure to show up for your future bookings.";
+    }
+    
+    return sendWhatsAppNotification(phone, "no_show_warning", {
+      noShowCount,
+      warningLevel,
+      message: `Notice: You have ${noShowCount} recorded no-show(s). ${consequence}`,
+    });
+  };
+
   // Dashboard stats
   app.get("/api/stats/dashboard", async (req, res) => {
     try {
@@ -352,6 +373,125 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting booking:", error);
       res.status(500).json({ message: "Failed to delete booking" });
+    }
+  });
+
+  // No-show tracking endpoint
+  app.post("/api/bookings/:id/no-show", async (req, res) => {
+    try {
+      const booking = await storage.getBooking(req.params.id);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      
+      if (booking.status === "no_show") {
+        return res.status(400).json({ message: "Booking already marked as no-show" });
+      }
+      
+      // Validate customer exists - bookings must have valid customers for tracking
+      const customer = await storage.getCustomer(booking.customerId);
+      if (!customer) {
+        // Still mark booking as no-show even if customer is missing
+        const updatedBooking = await storage.updateBooking(req.params.id, { status: "no_show" });
+        broadcast("booking_updated", updatedBooking);
+        return res.json({ 
+          booking: updatedBooking, 
+          noShowCount: 0,
+          isHighRisk: false,
+          isBlacklisted: false,
+          warning: "Customer record not found - no-show tracking not applied",
+        });
+      }
+      
+      // Update booking status to no_show
+      const updatedBooking = await storage.updateBooking(req.params.id, { status: "no_show" });
+      
+      // Calculate new metrics
+      const newNoShowCount = customer.noShowCount + 1;
+      const updatedTags = [...new Set([...customer.tags])];
+      
+      // Auto-tag HIGH_RISK after 3 no-shows
+      const isHighRisk = newNoShowCount >= 3;
+      if (isHighRisk && !updatedTags.includes("HIGH_RISK")) {
+        updatedTags.push("HIGH_RISK");
+      }
+      
+      // Auto-blacklist after 5 no-shows
+      const isBlacklisted = newNoShowCount >= 5;
+      const shouldBlacklist = isBlacklisted || customer.isBlacklisted;
+      
+      // Update customer with new metrics
+      const updatedCustomer = await storage.updateCustomer(booking.customerId, { 
+        noShowCount: newNoShowCount,
+        tags: updatedTags,
+        isBlacklisted: shouldBlacklist,
+      });
+      
+      if (updatedCustomer) {
+        broadcast("customer_updated", updatedCustomer);
+      }
+      
+      // Send warning for repeat offenders
+      if (newNoShowCount >= 2 && customer.phone) {
+        await sendNoShowWarning(customer.phone, newNoShowCount);
+      }
+      
+      broadcast("booking_updated", updatedBooking);
+      res.json({ 
+        booking: updatedBooking, 
+        noShowCount: newNoShowCount,
+        isHighRisk,
+        isBlacklisted,
+        customerName: customer.name,
+      });
+    } catch (error) {
+      console.error("Error marking no-show:", error);
+      res.status(500).json({ message: "Failed to mark no-show" });
+    }
+  });
+
+  // Get no-show analytics
+  app.get("/api/analytics/no-shows", async (req, res) => {
+    try {
+      const bookings = await storage.getBookings();
+      const customers = await storage.getCustomers();
+      
+      const noShowBookings = bookings.filter(b => b.status === "no_show");
+      const highRiskCustomers = customers.filter(c => c.noShowCount >= 3 || c.tags.includes("HIGH_RISK"));
+      const repeatOffenders = customers.filter(c => c.noShowCount >= 2);
+      const blacklistedCustomers = customers.filter(c => c.isBlacklisted);
+      
+      // Calculate no-show rate
+      const completedOrNoShow = bookings.filter(b => 
+        b.status === "completed" || b.status === "no_show" || b.status === "checked_in"
+      );
+      const noShowRate = completedOrNoShow.length > 0 
+        ? (noShowBookings.length / completedOrNoShow.length) * 100 
+        : 0;
+      
+      // Revenue lost to no-shows
+      const revenueLost = noShowBookings.reduce((sum, b) => sum + Number(b.totalAmount), 0);
+      
+      res.json({
+        totalNoShows: noShowBookings.length,
+        noShowRate: Number(noShowRate.toFixed(1)),
+        revenueLost,
+        highRiskCount: highRiskCustomers.length,
+        repeatOffendersCount: repeatOffenders.length,
+        blacklistedCount: blacklistedCustomers.length,
+        recentNoShows: noShowBookings.slice(-10).reverse(),
+        repeatOffenders: repeatOffenders.map(c => ({
+          id: c.id,
+          name: c.name,
+          phone: c.phone,
+          noShowCount: c.noShowCount,
+          isBlacklisted: c.isBlacklisted,
+          tags: c.tags,
+        })),
+      });
+    } catch (error) {
+      console.error("Error getting no-show analytics:", error);
+      res.status(500).json({ message: "Failed to get no-show analytics" });
     }
   });
 

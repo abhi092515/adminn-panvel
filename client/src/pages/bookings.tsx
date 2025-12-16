@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +21,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Calendar,
   ChevronLeft,
   ChevronRight,
@@ -28,7 +40,8 @@ import {
   Clock,
   User,
   CreditCard,
-  QrCode,
+  AlertTriangle,
+  UserX,
 } from "lucide-react";
 import { Link } from "wouter";
 import { format, addDays, subDays, startOfWeek, addWeeks, subWeeks } from "date-fns";
@@ -36,6 +49,7 @@ import type { Court, Booking, Customer, BlockedSlot } from "@shared/schema";
 import { getCalendarSlotColor, getPaymentStatusColor, TIME_SLOTS, BOOKING_COLOR_LEGEND } from "@/lib/constants";
 import { QRCodeSVG } from "qrcode.react";
 import { useRealtime } from "@/hooks/use-realtime";
+import { useToast } from "@/hooks/use-toast";
 
 type CalendarView = "day" | "week" | "month";
 
@@ -49,23 +63,36 @@ function TimeSlotBlock({
   onClick: () => void;
 }) {
   const colorClass = getCalendarSlotColor(booking.paymentStatus, booking.status);
+  const isNoShow = booking.status === "no_show";
 
   return (
     <div
-      className={`p-2 rounded-md border cursor-pointer transition-all hover:scale-[1.02] ${colorClass}`}
+      className={`p-2 rounded-md border cursor-pointer transition-all hover:scale-[1.02] ${colorClass} ${isNoShow ? 'opacity-60' : ''}`}
       onClick={onClick}
       data-testid={`booking-slot-${booking.id}`}
     >
-      <div className="text-xs font-medium truncate">
+      <div className="flex items-center gap-1 text-xs font-medium truncate">
+        {isNoShow && <UserX className="w-3 h-3 text-orange-600" />}
         {customer?.name || "Customer"}
       </div>
       <div className="text-xs text-muted-foreground">
         {booking.startTime} - {booking.endTime}
       </div>
-      <div className="flex items-center gap-1 mt-1">
-        <Badge variant="outline" className={`text-[10px] px-1 ${getPaymentStatusColor(booking.paymentStatus)}`}>
-          {booking.paymentStatus === "paid" ? "Paid" : booking.paymentStatus === "partial" ? "Partial" : "Pending"}
-        </Badge>
+      <div className="flex items-center gap-1 mt-1 flex-wrap">
+        {isNoShow ? (
+          <Badge variant="outline" className="text-[10px] px-1 bg-orange-500/20 text-orange-700 dark:text-orange-400 border-orange-500/30">
+            No-Show
+          </Badge>
+        ) : (
+          <Badge variant="outline" className={`text-[10px] px-1 ${getPaymentStatusColor(booking.paymentStatus)}`}>
+            {booking.paymentStatus === "paid" ? "Paid" : booking.paymentStatus === "partial" ? "Partial" : "Pending"}
+          </Badge>
+        )}
+        {customer?.tags.includes("HIGH_RISK") && (
+          <Badge variant="outline" className="text-[10px] px-1 bg-red-500/20 text-red-700 dark:text-red-400 border-red-500/30">
+            Risk
+          </Badge>
+        )}
       </div>
     </div>
   );
@@ -104,13 +131,60 @@ function BookingDetailDialog({
   open: boolean;
   onClose: () => void;
 }) {
+  const { toast } = useToast();
+  
+  const markNoShowMutation = useMutation({
+    mutationFn: async (bookingId: string) => {
+      const response = await apiRequest("POST", `/api/bookings/${bookingId}/no-show`);
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/no-shows"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/dashboard"] });
+      
+      let message = "Booking marked as no-show.";
+      if (data?.isBlacklisted) {
+        message += " Customer has been blacklisted due to repeated no-shows.";
+      } else if (data?.isHighRisk) {
+        message += ` Customer flagged as high-risk (${data?.noShowCount} no-shows).`;
+      }
+      
+      toast({
+        title: "No-Show Recorded",
+        description: message,
+        variant: data?.isBlacklisted ? "destructive" : "default",
+      });
+      onClose();
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to mark no-show",
+        variant: "destructive",
+      });
+    },
+  });
+  
   if (!booking) return null;
+
+  const isNoShow = booking.status === "no_show";
+  const canMarkNoShow = !isNoShow && booking.status !== "completed" && booking.status !== "cancelled";
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Booking Details</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            Booking Details
+            {isNoShow && (
+              <Badge variant="destructive" className="text-xs">
+                <UserX className="w-3 h-3 mr-1" />
+                No-Show
+              </Badge>
+            )}
+          </DialogTitle>
           <DialogDescription>
             {court?.name} - {booking.date}
           </DialogDescription>
@@ -124,12 +198,23 @@ function BookingDetailDialog({
             <div>
               <p className="font-medium">{customer?.name || "Walk-in Customer"}</p>
               <p className="text-sm text-muted-foreground">{customer?.phone}</p>
-              {customer?.tags.includes("VIP") && (
-                <Badge className="mt-1 bg-amber-500 text-white text-xs">VIP</Badge>
-              )}
-              {customer?.tags.includes("HIGH_RISK") && (
-                <Badge className="mt-1 bg-red-500 text-white text-xs">High Risk</Badge>
-              )}
+              <div className="flex flex-wrap gap-1 mt-1">
+                {customer?.tags.includes("VIP") && (
+                  <Badge className="bg-amber-500 text-white text-xs">VIP</Badge>
+                )}
+                {customer?.tags.includes("HIGH_RISK") && (
+                  <Badge className="bg-red-500 text-white text-xs">High Risk</Badge>
+                )}
+                {customer && customer.noShowCount > 0 && (
+                  <Badge variant="outline" className="text-xs text-orange-600 border-orange-300">
+                    <AlertTriangle className="w-3 h-3 mr-1" />
+                    {customer.noShowCount} no-show{customer.noShowCount > 1 ? "s" : ""}
+                  </Badge>
+                )}
+                {customer?.isBlacklisted && (
+                  <Badge variant="destructive" className="text-xs">Blacklisted</Badge>
+                )}
+              </div>
             </div>
           </div>
 
@@ -161,14 +246,14 @@ function BookingDetailDialog({
           </div>
 
           {booking.qrCode && (
-            <div className="flex flex-col items-center p-4 bg-white rounded-md">
+            <div className="flex flex-col items-center p-4 bg-white dark:bg-slate-900 rounded-md">
               <QRCodeSVG value={booking.qrCode} size={120} />
               <p className="text-xs text-muted-foreground mt-2">Scan to verify</p>
             </div>
           )}
 
           <div className="flex gap-2">
-            <Button className="flex-1" data-testid="button-check-in">
+            <Button className="flex-1" data-testid="button-check-in" disabled={isNoShow}>
               Check In
             </Button>
             <Button variant="outline" className="flex-1" data-testid="button-collect-payment">
@@ -177,13 +262,59 @@ function BookingDetailDialog({
           </div>
 
           <div className="flex gap-2">
-            <Button variant="ghost" className="flex-1" data-testid="button-reschedule">
+            <Button variant="ghost" className="flex-1" data-testid="button-reschedule" disabled={isNoShow}>
               Reschedule
             </Button>
-            <Button variant="ghost" className="flex-1 text-destructive" data-testid="button-cancel">
+            <Button variant="ghost" className="flex-1 text-destructive" data-testid="button-cancel" disabled={isNoShow}>
               Cancel
             </Button>
           </div>
+
+          {canMarkNoShow && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  className="w-full border-orange-300 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950"
+                  data-testid="button-mark-no-show"
+                >
+                  <UserX className="w-4 h-4 mr-2" />
+                  Mark as No-Show
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-orange-500" />
+                    Confirm No-Show
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will record a no-show for {customer?.name || "this customer"}. 
+                    {customer && customer.noShowCount >= 2 && (
+                      <span className="block mt-2 text-red-500 font-medium">
+                        Warning: This customer already has {customer.noShowCount} no-show(s). 
+                        {customer.noShowCount >= 4 
+                          ? " They will be blacklisted after this." 
+                          : customer.noShowCount >= 2 
+                          ? " They will be marked as high-risk." 
+                          : ""}
+                      </span>
+                    )}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel data-testid="button-cancel-no-show">Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => markNoShowMutation.mutate(booking.id)}
+                    className="bg-orange-600 hover:bg-orange-700"
+                    data-testid="button-confirm-no-show"
+                  >
+                    {markNoShowMutation.isPending ? "Marking..." : "Confirm No-Show"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </div>
       </DialogContent>
     </Dialog>
@@ -426,7 +557,7 @@ export default function Bookings() {
               <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>No courts available</p>
               <Link href="/settings">
-                <Button variant="link" className="mt-2" data-testid="link-add-courts">
+                <Button variant="ghost" className="mt-2" data-testid="link-add-courts">
                   Add Courts in Settings
                 </Button>
               </Link>
