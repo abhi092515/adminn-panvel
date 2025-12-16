@@ -3,7 +3,7 @@ import { eq, and, desc, asc, gte, lte, sql } from "drizzle-orm";
 import {
   users, courts, customers, bookings, transactions, settlements,
   waitlist, blockedSlots, tournaments, tournamentTeams, maintenanceLogs, expenses,
-  type User, type InsertUser,
+  type User, type UpsertUser,
   type Court, type InsertCourt,
   type Customer, type InsertCustomer,
   type Booking, type InsertBooking,
@@ -20,8 +20,11 @@ import {
 export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  createUser(user: any): Promise<User>;
+  
+  // Staff (RBAC)
+  getStaff(): Promise<User[]>;
+  updateStaffRole(id: string, role: string): Promise<User | undefined>;
 
   // Courts
   getCourts(): Promise<Court[]>;
@@ -93,14 +96,22 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
-    return user;
-  }
-
-  async createUser(user: InsertUser): Promise<User> {
+  async createUser(user: any): Promise<User> {
     const [created] = await db.insert(users).values(user).returning();
     return created;
+  }
+  
+  // Staff (RBAC)
+  async getStaff(): Promise<User[]> {
+    return db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  async updateStaffRole(id: string, role: string): Promise<User | undefined> {
+    const [updated] = await db.update(users)
+      .set({ role, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return updated;
   }
 
   // Courts

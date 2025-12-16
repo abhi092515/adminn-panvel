@@ -4,16 +4,9 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
 
-// Users table (venue admins/staff)
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-  name: text("name").notNull(),
-  role: text("role").notNull().default("receptionist"), // owner, receptionist
-  phone: text("phone"),
-  avatarUrl: text("avatar_url"),
-});
+// Re-export auth schema (includes users table)
+export * from "./models/auth";
+import { users, type User } from "./models/auth";
 
 // Courts/Turfs table
 export const courts = pgTable("courts", {
@@ -204,7 +197,6 @@ export const tournamentTeamsRelations = relations(tournamentTeams, ({ one }) => 
 }));
 
 // Insert schemas
-export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export const insertCourtSchema = createInsertSchema(courts).omit({ id: true });
 export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true, totalSpend: true, totalBookings: true, noShowCount: true });
 export const insertBookingSchema = createInsertSchema(bookings).omit({ id: true, createdAt: true });
@@ -218,8 +210,6 @@ export const insertMaintenanceLogSchema = createInsertSchema(maintenanceLogs).om
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, createdAt: true });
 
 // Types
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
 export type InsertCourt = z.infer<typeof insertCourtSchema>;
 export type Court = typeof courts.$inferSelect;
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;

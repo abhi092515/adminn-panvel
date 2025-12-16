@@ -630,5 +630,46 @@ export async function registerRoutes(
     }
   });
 
+  // Helper to check if user has owner role
+  const requireOwnerRole = async (req: any, res: any, next: any) => {
+    if (!req.isAuthenticated?.() || !req.user?.claims?.sub) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    const currentUser = await storage.getUser(req.user.claims.sub);
+    if (!currentUser || currentUser.role !== "owner") {
+      return res.status(403).json({ message: "Forbidden - Owner access required" });
+    }
+    next();
+  };
+
+  // Staff Management (RBAC) - Owner only
+  app.get("/api/staff", requireOwnerRole, async (req, res) => {
+    try {
+      const staff = await storage.getStaff();
+      res.json(staff);
+    } catch (error) {
+      console.error("Error getting staff:", error);
+      res.status(500).json({ message: "Failed to get staff" });
+    }
+  });
+
+  app.patch("/api/staff/:id/role", requireOwnerRole, async (req, res) => {
+    try {
+      const { role } = req.body;
+      if (!role || !["owner", "manager", "receptionist"].includes(role)) {
+        return res.status(400).json({ message: "Invalid role" });
+      }
+      const updatedUser = await storage.updateStaffRole(req.params.id, role);
+      if (!updatedUser) {
+        return res.status(404).json({ message: "Staff member not found" });
+      }
+      broadcast("staff_role_updated", updatedUser);
+      res.json(updatedUser);
+    } catch (error) {
+      console.error("Error updating staff role:", error);
+      res.status(500).json({ message: "Failed to update staff role" });
+    }
+  });
+
   return httpServer;
 }

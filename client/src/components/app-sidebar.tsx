@@ -10,6 +10,8 @@ import {
   Clock,
   AlertCircle,
   BarChart3,
+  UserCog,
+  LogOut,
 } from "lucide-react";
 import {
   Sidebar,
@@ -25,8 +27,10 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useQuery } from "@tanstack/react-query";
-import type { DashboardStats } from "@shared/schema";
+import type { DashboardStats, User } from "@shared/schema";
 
 const mainNavItems = [
   {
@@ -81,19 +85,39 @@ const settingsItems = [
     icon: BarChart3,
   },
   {
+    title: "Staff",
+    url: "/staff",
+    icon: UserCog,
+    ownerOnly: true,
+  },
+  {
     title: "Settings",
     url: "/settings",
     icon: Settings,
   },
 ];
 
-export function AppSidebar() {
+interface AppSidebarProps {
+  user?: User | null;
+}
+
+export function AppSidebar({ user }: AppSidebarProps) {
   const [location] = useLocation();
 
   const { data: stats } = useQuery<DashboardStats>({
     queryKey: ["/api/stats/dashboard"],
     refetchInterval: 30000,
   });
+
+  const userRole = user?.role || "receptionist";
+  const isOwner = userRole === "owner";
+  const isManager = userRole === "manager" || isOwner;
+
+  const getInitials = () => {
+    const first = user?.firstName?.[0] || "";
+    const last = user?.lastName?.[0] || "";
+    return (first + last).toUpperCase() || "U";
+  };
 
   return (
     <Sidebar>
@@ -171,20 +195,22 @@ export function AppSidebar() {
           <SidebarGroupLabel>System</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {settingsItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={location === item.url}
-                    tooltip={item.title}
-                  >
-                    <Link href={item.url} data-testid={`nav-${item.title.toLowerCase()}`}>
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {settingsItems
+                .filter((item) => !item.ownerOnly || isOwner)
+                .map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={location === item.url}
+                      tooltip={item.title}
+                    >
+                      <Link href={item.url} data-testid={`nav-${item.title.toLowerCase()}`}>
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -192,13 +218,24 @@ export function AppSidebar() {
 
       <SidebarFooter className="p-4">
         <div className="flex items-center gap-3 p-2 rounded-md bg-sidebar-accent">
-          <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-            <span className="text-primary text-sm font-medium">A</span>
-          </div>
+          <Avatar className="w-8 h-8">
+            <AvatarImage src={user?.profileImageUrl || undefined} />
+            <AvatarFallback>{getInitials()}</AvatarFallback>
+          </Avatar>
           <div className="flex flex-col flex-1 min-w-0">
-            <span className="text-sm font-medium truncate">Admin</span>
-            <span className="text-xs text-muted-foreground">Owner</span>
+            <span className="text-sm font-medium truncate">
+              {user?.firstName || "User"} {user?.lastName || ""}
+            </span>
+            <span className="text-xs text-muted-foreground capitalize">{userRole}</span>
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => window.location.href = "/api/logout"}
+            data-testid="button-logout"
+          >
+            <LogOut className="w-4 h-4" />
+          </Button>
         </div>
       </SidebarFooter>
     </Sidebar>
