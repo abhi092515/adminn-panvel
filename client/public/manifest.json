@@ -1,6 +1,6 @@
 {
-  "name": "VenueHub - Sports Venue Management",
-  "short_name": "VenueHub",
+  "name": "Athezy - Sports Venue Management",
+  "short_name": "Athezy",
   "description": "Complete sports venue booking and management system",
   "start_url": "/",
   "display": "standalone",

@@ -134,7 +134,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
               <span className="text-primary-foreground font-bold text-lg">V</span>
             </div>
             <div className="flex flex-col">
-              <span className="font-semibold text-sm">VenueHub</span>
+              <span className="font-semibold text-sm">Athezy</span>
               <span className="text-xs text-muted-foreground">Venue Management</span>
             </div>
           </div>

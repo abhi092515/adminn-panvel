@@ -58,7 +58,7 @@ function LandingPage() {
           <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4">
             <Building2 className="w-6 h-6 text-primary" />
           </div>
-          <CardTitle className="text-2xl">VenueHub</CardTitle>
+          <CardTitle className="text-2xl">Athezy</CardTitle>
           <CardDescription>
             Sports Venue Management System
           </CardDescription>

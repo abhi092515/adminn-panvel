@@ -1,330 +1,384 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, decimal, jsonb } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { relations } from "drizzle-orm";
 
 // Re-export auth schema (includes users table)
 export * from "./models/auth";
-import { users, type User } from "./models/auth";
+import { type User } from "./models/auth";
 
-// Courts/Turfs table
-export const courts = pgTable("courts", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
-  sport: text("sport").notNull(), // cricket, football, badminton, tennis
-  description: text("description"),
-  hourlyRate: decimal("hourly_rate", { precision: 10, scale: 2 }).notNull(),
-  peakHourlyRate: decimal("peak_hourly_rate", { precision: 10, scale: 2 }),
-  isActive: boolean("is_active").notNull().default(true),
-  imageUrl: text("image_url"),
+// Types derived from schema
+export type Court = {
+  id: string;
+  name: string;
+  sport: string;
+  description: string | null;
+  hourlyRate: string; // decimal as string
+  peakHourlyRate: string | null; // decimal as string
+  isActive: boolean;
+  imageUrl: string | null;
+};
+
+export type Customer = {
+  id: string;
+  name: string;
+  phone: string;
+  email: string | null;
+  totalSpend: string; // decimal as string
+  totalBookings: number;
+  noShowCount: number;
+  tags: string[];
+  notes: string | null;
+  isBlacklisted: boolean;
+  source: string;
+};
+
+export type Booking = {
+  id: string;
+  courtId: string;
+  customerId: string;
+  bookedById: string | null;
+  date: string;
+  startTime: string;
+  endTime: string;
+  duration: number;
+  totalAmount: string; // decimal as string
+  paidAmount: string; // decimal as string
+  paymentStatus: string;
+  paymentMethod: string | null;
+  status: string;
+  qrCode: string | null;
+  notes: string | null;
+  isTeamBooking: boolean;
+  teamName: string | null;
+  createdAt: Date;
+};
+
+export type Transaction = {
+  id: string;
+  bookingId: string | null;
+  customerId: string | null;
+  type: string;
+  amount: string; // decimal as string
+  paymentMethod: string;
+  status: string;
+  notes: string | null;
+  processedById: string | null;
+  createdAt: Date;
+};
+
+export type Settlement = {
+  id: string;
+  amount: string; // decimal as string
+  commissionRate: string; // decimal as string
+  status: string;
+  periodStart: string;
+  periodEnd: string;
+  totalBookings: number;
+  totalCashReceived: string; // decimal as string
+  paidAt: Date | null;
+  createdAt: Date;
+};
+
+export type Waitlist = {
+  id: string;
+  courtId: string;
+  customerId: string;
+  date: string;
+  preferredStartTime: string;
+  preferredEndTime: string;
+  status: string;
+  notifiedAt: Date | null;
+  createdAt: Date;
+};
+
+export type BlockedSlot = {
+  id: string;
+  courtId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  reason: string;
+  blockedById: string | null;
+  createdAt: Date;
+};
+
+export type Tournament = {
+  id: string;
+  name: string;
+  sport: string;
+  entryFee: string; // decimal as string
+  maxTeams: number;
+  startDate: string;
+  endDate: string;
+  status: string;
+  description: string | null;
+  prizePool: string | null; // decimal as string
+  createdAt: Date;
+};
+
+export type TournamentTeam = {
+  id: string;
+  tournamentId: string;
+  name: string;
+  captainId: string | null;
+  players: string[];
+  isPaid: boolean;
+  createdAt: Date;
+};
+
+export type TournamentMatch = {
+  id: string;
+  tournamentId: string;
+  round: number;
+  matchNumber: number;
+  team1Id: string | null;
+  team2Id: string | null;
+  team1Score: number | null;
+  team2Score: number | null;
+  winnerId: string | null;
+  status: string;
+  scheduledTime: string | null;
+  courtId: string | null;
+  notes: string | null;
+  createdAt: Date;
+};
+
+export type MaintenanceLog = {
+  id: string;
+  courtId: string;
+  issue: string;
+  description: string | null;
+  photoUrl: string | null;
+  status: string;
+  reportedById: string | null;
+  createdAt: Date;
+  resolvedAt: Date | null;
+};
+
+export type Expense = {
+  id: string;
+  category: string;
+  amount: string; // decimal as string
+  description: string | null;
+  date: string;
+  addedById: string | null;
+  createdAt: Date;
+};
+
+export type MembershipPlan = {
+  id: string;
+  name: string;
+  description: string | null;
+  durationDays: number;
+  price: string; // decimal as string
+  discountPercent: number;
+  freeHours: number;
+  priority: boolean;
+  isActive: boolean;
+  createdAt: Date;
+};
+
+export type Membership = {
+  id: string;
+  customerId: string;
+  planId: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+  usedFreeHours: number;
+  paidAmount: string; // decimal as string
+  paymentMethod: string | null;
+  createdAt: Date;
+};
+
+export type LoyaltyPoints = {
+  id: string;
+  customerId: string;
+  type: string;
+  points: number;
+  description: string;
+  bookingId: string | null;
+  expiresAt: Date | null;
+  createdAt: Date;
+};
+
+// Zod Schemas for Insert (Validation)
+// Using strings for decimals to maintain compatibility with numeric input forms
+export const insertCourtSchema = z.object({
+  name: z.string().min(1),
+  sport: z.string().min(1),
+  description: z.string().optional(),
+  hourlyRate: z.string(),
+  peakHourlyRate: z.string().optional(),
+  isActive: z.boolean().default(true),
+  imageUrl: z.string().optional(),
 });
 
-// Customers table (CRM)
-export const customers = pgTable("customers", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
-  phone: text("phone").notNull().unique(),
-  email: text("email"),
-  totalSpend: decimal("total_spend", { precision: 10, scale: 2 }).notNull().default("0"),
-  totalBookings: integer("total_bookings").notNull().default(0),
-  noShowCount: integer("no_show_count").notNull().default(0),
-  tags: text("tags").array().notNull().default(sql`ARRAY[]::text[]`), // VIP, HIGH_RISK, REGULAR
-  notes: text("notes"),
-  isBlacklisted: boolean("is_blacklisted").notNull().default(false),
-  source: text("source").notNull().default("walkin"), // app, walkin, website
+export const insertCustomerSchema = z.object({
+  name: z.string().min(1),
+  phone: z.string().min(10),
+  email: z.string().email().optional().or(z.literal("")),
+  tags: z.array(z.string()).default([]),
+  notes: z.string().optional(),
+  isBlacklisted: z.boolean().default(false),
+  source: z.string().default("walkin"),
 });
 
-// Bookings table
-export const bookings = pgTable("bookings", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  courtId: varchar("court_id").notNull().references(() => courts.id),
-  customerId: varchar("customer_id").notNull().references(() => customers.id),
-  bookedById: varchar("booked_by_id").references(() => users.id), // staff who made the booking
-  date: text("date").notNull(), // YYYY-MM-DD
-  startTime: text("start_time").notNull(), // HH:MM
-  endTime: text("end_time").notNull(), // HH:MM
-  duration: integer("duration").notNull(), // in minutes
-  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
-  paidAmount: decimal("paid_amount", { precision: 10, scale: 2 }).notNull().default("0"),
-  paymentStatus: text("payment_status").notNull().default("pending"), // pending, partial, paid
-  paymentMethod: text("payment_method"), // cash, upi, card, online
-  status: text("status").notNull().default("confirmed"), // confirmed, checked_in, completed, cancelled, no_show
-  qrCode: text("qr_code"),
-  notes: text("notes"),
-  isTeamBooking: boolean("is_team_booking").notNull().default(false),
-  teamName: text("team_name"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+export const insertBookingSchema = z.object({
+  courtId: z.string().min(1),
+  customerId: z.string().min(1),
+  bookedById: z.string().optional(),
+  date: z.string(),
+  startTime: z.string(),
+  endTime: z.string(),
+  duration: z.number().int(),
+  totalAmount: z.string(),
+  paidAmount: z.string().default("0"),
+  paymentStatus: z.string().default("pending"),
+  paymentMethod: z.string().optional(),
+  status: z.string().default("confirmed"),
+  qrCode: z.string().optional(),
+  notes: z.string().optional(),
+  isTeamBooking: z.boolean().default(false),
+  teamName: z.string().optional(),
 });
 
-// Transactions table
-export const transactions = pgTable("transactions", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  bookingId: varchar("booking_id").references(() => bookings.id),
-  customerId: varchar("customer_id").references(() => customers.id),
-  type: text("type").notNull(), // booking_payment, refund, settlement
-  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  paymentMethod: text("payment_method").notNull(), // cash, upi, card, online
-  status: text("status").notNull().default("completed"), // pending, completed, failed
-  notes: text("notes"),
-  processedById: varchar("processed_by_id").references(() => users.id),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+export const insertTransactionSchema = z.object({
+  bookingId: z.string().optional(),
+  customerId: z.string().optional(),
+  type: z.string(),
+  amount: z.string(),
+  paymentMethod: z.string(),
+  status: z.string().default("completed"),
+  notes: z.string().optional(),
+  processedById: z.string().optional(),
 });
 
-// Settlements table (commission payments to platform)
-export const settlements = pgTable("settlements", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  commissionRate: decimal("commission_rate", { precision: 5, scale: 2 }).notNull().default("5.00"),
-  status: text("status").notNull().default("pending"), // pending, paid
-  periodStart: text("period_start").notNull(),
-  periodEnd: text("period_end").notNull(),
-  totalBookings: integer("total_bookings").notNull().default(0),
-  totalCashReceived: decimal("total_cash_received", { precision: 10, scale: 2 }).notNull().default("0"),
-  paidAt: timestamp("paid_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+export const insertSettlementSchema = z.object({
+  amount: z.string(),
+  commissionRate: z.string().default("5.00"),
+  status: z.string().default("pending"),
+  periodStart: z.string(),
+  periodEnd: z.string(),
+  totalBookings: z.number().int().default(0),
+  totalCashReceived: z.string().default("0"),
 });
 
-// Waitlist table
-export const waitlist = pgTable("waitlist", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  courtId: varchar("court_id").notNull().references(() => courts.id),
-  customerId: varchar("customer_id").notNull().references(() => customers.id),
-  date: text("date").notNull(),
-  preferredStartTime: text("preferred_start_time").notNull(),
-  preferredEndTime: text("preferred_end_time").notNull(),
-  status: text("status").notNull().default("waiting"), // waiting, notified, booked, expired
-  notifiedAt: timestamp("notified_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+export const insertWaitlistSchema = z.object({
+  courtId: z.string(),
+  customerId: z.string(),
+  date: z.string(),
+  preferredStartTime: z.string(),
+  preferredEndTime: z.string(),
+  status: z.string().default("waiting"),
 });
 
-// Blocked slots table (maintenance, private events)
-export const blockedSlots = pgTable("blocked_slots", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  courtId: varchar("court_id").notNull().references(() => courts.id),
-  date: text("date").notNull(),
-  startTime: text("start_time").notNull(),
-  endTime: text("end_time").notNull(),
-  reason: text("reason").notNull(),
-  blockedById: varchar("blocked_by_id").references(() => users.id),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+export const insertBlockedSlotSchema = z.object({
+  courtId: z.string(),
+  date: z.string(),
+  startTime: z.string(),
+  endTime: z.string(),
+  reason: z.string(),
+  blockedById: z.string().optional(),
 });
 
-// Tournaments table
-export const tournaments = pgTable("tournaments", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
-  sport: text("sport").notNull(),
-  entryFee: decimal("entry_fee", { precision: 10, scale: 2 }).notNull().default("0"),
-  maxTeams: integer("max_teams").notNull(),
-  startDate: text("start_date").notNull(),
-  endDate: text("end_date").notNull(),
-  status: text("status").notNull().default("upcoming"), // upcoming, ongoing, completed
-  description: text("description"),
-  prizePool: decimal("prize_pool", { precision: 10, scale: 2 }),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+export const insertTournamentSchema = z.object({
+  name: z.string(),
+  sport: z.string(),
+  entryFee: z.string().default("0"),
+  maxTeams: z.number().int(),
+  startDate: z.string(),
+  endDate: z.string(),
+  status: z.string().default("upcoming"),
+  description: z.string().optional(),
+  prizePool: z.string().optional(),
 });
 
-// Tournament teams table
-export const tournamentTeams = pgTable("tournament_teams", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  tournamentId: varchar("tournament_id").notNull().references(() => tournaments.id),
-  name: text("name").notNull(),
-  captainId: varchar("captain_id").references(() => customers.id),
-  players: jsonb("players").notNull().default(sql`'[]'::jsonb`), // array of player names
-  isPaid: boolean("is_paid").notNull().default(false),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+export const insertTournamentTeamSchema = z.object({
+  tournamentId: z.string(),
+  name: z.string(),
+  captainId: z.string().optional(),
+  players: z.array(z.string()).default([]),
+  isPaid: z.boolean().default(false),
 });
 
-// Tournament matches table
-export const tournamentMatches = pgTable("tournament_matches", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  tournamentId: varchar("tournament_id").notNull().references(() => tournaments.id),
-  round: integer("round").notNull().default(1), // 1, 2, 3... (1=first round, etc)
-  matchNumber: integer("match_number").notNull(), // match order within round
-  team1Id: varchar("team1_id").references(() => tournamentTeams.id),
-  team2Id: varchar("team2_id").references(() => tournamentTeams.id),
-  team1Score: integer("team1_score").default(0),
-  team2Score: integer("team2_score").default(0),
-  winnerId: varchar("winner_id").references(() => tournamentTeams.id),
-  status: text("status").notNull().default("scheduled"), // scheduled, live, completed
-  scheduledTime: text("scheduled_time"), // ISO time
-  courtId: varchar("court_id").references(() => courts.id),
-  notes: text("notes"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+export const insertTournamentMatchSchema = z.object({
+  tournamentId: z.string(),
+  round: z.number().int().default(1),
+  matchNumber: z.number().int(),
+  team1Id: z.string().optional(),
+  team2Id: z.string().optional(),
+  team1Score: z.number().int().default(0),
+  team2Score: z.number().int().default(0),
+  winnerId: z.string().optional(),
+  status: z.string().default("scheduled"),
+  scheduledTime: z.string().optional(),
+  courtId: z.string().optional(),
+  notes: z.string().optional(),
 });
 
-// Maintenance log table
-export const maintenanceLogs = pgTable("maintenance_logs", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  courtId: varchar("court_id").notNull().references(() => courts.id),
-  issue: text("issue").notNull(),
-  description: text("description"),
-  photoUrl: text("photo_url"),
-  status: text("status").notNull().default("reported"), // reported, in_progress, resolved
-  reportedById: varchar("reported_by_id").references(() => users.id),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  resolvedAt: timestamp("resolved_at"),
+export const insertMaintenanceLogSchema = z.object({
+  courtId: z.string(),
+  issue: z.string(),
+  description: z.string().optional(),
+  photoUrl: z.string().optional(),
+  status: z.string().default("reported"),
+  reportedById: z.string().optional(),
 });
 
-// Expenses table
-export const expenses = pgTable("expenses", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  category: text("category").notNull(), // electricity, staff, maintenance, other
-  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  description: text("description"),
-  date: text("date").notNull(),
-  addedById: varchar("added_by_id").references(() => users.id),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+export const insertExpenseSchema = z.object({
+  category: z.string(),
+  amount: z.string(),
+  description: z.string().optional(),
+  date: z.string(),
+  addedById: z.string().optional(),
 });
 
-// Membership Plans table
-export const membershipPlans = pgTable("membership_plans", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
-  description: text("description"),
-  durationDays: integer("duration_days").notNull(), // 30, 90, 365 etc.
-  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-  discountPercent: integer("discount_percent").notNull().default(0), // booking discount
-  freeHours: integer("free_hours").notNull().default(0), // free playing hours per month
-  priority: boolean("priority").notNull().default(false), // priority booking
-  isActive: boolean("is_active").notNull().default(true),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+export const insertMembershipPlanSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  durationDays: z.number().int(),
+  price: z.string(),
+  discountPercent: z.number().int().default(0),
+  freeHours: z.number().int().default(0),
+  priority: z.boolean().default(false),
+  isActive: z.boolean().default(true),
 });
 
-// Customer Memberships table  
-export const memberships = pgTable("memberships", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  customerId: varchar("customer_id").notNull().references(() => customers.id),
-  planId: varchar("plan_id").notNull().references(() => membershipPlans.id),
-  startDate: text("start_date").notNull(), // YYYY-MM-DD
-  endDate: text("end_date").notNull(), // YYYY-MM-DD
-  status: text("status").notNull().default("active"), // active, expired, cancelled
-  usedFreeHours: integer("used_free_hours").notNull().default(0),
-  paidAmount: decimal("paid_amount", { precision: 10, scale: 2 }).notNull(),
-  paymentMethod: text("payment_method"), // cash, upi, card, online
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+export const insertMembershipSchema = z.object({
+  customerId: z.string(),
+  planId: z.string(),
+  startDate: z.string(),
+  endDate: z.string(),
+  status: z.string().default("active"),
+  usedFreeHours: z.number().int().default(0),
+  paidAmount: z.string(),
+  paymentMethod: z.string().optional(),
 });
 
-// Loyalty Points table
-export const loyaltyPoints = pgTable("loyalty_points", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  customerId: varchar("customer_id").notNull().references(() => customers.id),
-  type: text("type").notNull(), // earned, redeemed, expired
-  points: integer("points").notNull(), // positive for earned, negative for redeemed
-  description: text("description").notNull(),
-  bookingId: varchar("booking_id").references(() => bookings.id),
-  expiresAt: timestamp("expires_at"), // loyalty points expiry
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+export const insertLoyaltyPointsSchema = z.object({
+  customerId: z.string(),
+  type: z.string(),
+  points: z.number().int(),
+  description: z.string(),
+  bookingId: z.string().optional(),
+  expiresAt: z.string().optional().transform(str => str ? new Date(str) : null),
 });
 
-// Relations
-export const courtsRelations = relations(courts, ({ many }) => ({
-  bookings: many(bookings),
-  waitlist: many(waitlist),
-  blockedSlots: many(blockedSlots),
-  maintenanceLogs: many(maintenanceLogs),
-}));
-
-export const customersRelations = relations(customers, ({ many }) => ({
-  bookings: many(bookings),
-  transactions: many(transactions),
-  waitlist: many(waitlist),
-}));
-
-export const bookingsRelations = relations(bookings, ({ one, many }) => ({
-  court: one(courts, { fields: [bookings.courtId], references: [courts.id] }),
-  customer: one(customers, { fields: [bookings.customerId], references: [customers.id] }),
-  bookedBy: one(users, { fields: [bookings.bookedById], references: [users.id] }),
-  transactions: many(transactions),
-}));
-
-export const transactionsRelations = relations(transactions, ({ one }) => ({
-  booking: one(bookings, { fields: [transactions.bookingId], references: [bookings.id] }),
-  customer: one(customers, { fields: [transactions.customerId], references: [customers.id] }),
-  processedBy: one(users, { fields: [transactions.processedById], references: [users.id] }),
-}));
-
-export const tournamentsRelations = relations(tournaments, ({ many }) => ({
-  teams: many(tournamentTeams),
-  matches: many(tournamentMatches),
-}));
-
-export const tournamentTeamsRelations = relations(tournamentTeams, ({ one }) => ({
-  tournament: one(tournaments, { fields: [tournamentTeams.tournamentId], references: [tournaments.id] }),
-  captain: one(customers, { fields: [tournamentTeams.captainId], references: [customers.id] }),
-}));
-
-export const tournamentMatchesRelations = relations(tournamentMatches, ({ one }) => ({
-  tournament: one(tournaments, { fields: [tournamentMatches.tournamentId], references: [tournaments.id] }),
-  team1: one(tournamentTeams, { fields: [tournamentMatches.team1Id], references: [tournamentTeams.id] }),
-  team2: one(tournamentTeams, { fields: [tournamentMatches.team2Id], references: [tournamentTeams.id] }),
-  winner: one(tournamentTeams, { fields: [tournamentMatches.winnerId], references: [tournamentTeams.id] }),
-  court: one(courts, { fields: [tournamentMatches.courtId], references: [courts.id] }),
-}));
-
-export const membershipPlansRelations = relations(membershipPlans, ({ many }) => ({
-  memberships: many(memberships),
-}));
-
-export const membershipsRelations = relations(memberships, ({ one }) => ({
-  customer: one(customers, { fields: [memberships.customerId], references: [customers.id] }),
-  plan: one(membershipPlans, { fields: [memberships.planId], references: [membershipPlans.id] }),
-}));
-
-export const loyaltyPointsRelations = relations(loyaltyPoints, ({ one }) => ({
-  customer: one(customers, { fields: [loyaltyPoints.customerId], references: [customers.id] }),
-  booking: one(bookings, { fields: [loyaltyPoints.bookingId], references: [bookings.id] }),
-}));
-
-// Insert schemas
-export const insertCourtSchema = createInsertSchema(courts).omit({ id: true });
-export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true, totalSpend: true, totalBookings: true, noShowCount: true });
-export const insertBookingSchema = createInsertSchema(bookings).omit({ id: true, createdAt: true });
-export const insertTransactionSchema = createInsertSchema(transactions).omit({ id: true, createdAt: true });
-export const insertSettlementSchema = createInsertSchema(settlements).omit({ id: true, createdAt: true, paidAt: true });
-export const insertWaitlistSchema = createInsertSchema(waitlist).omit({ id: true, createdAt: true, notifiedAt: true });
-export const insertBlockedSlotSchema = createInsertSchema(blockedSlots).omit({ id: true, createdAt: true });
-export const insertTournamentSchema = createInsertSchema(tournaments).omit({ id: true, createdAt: true });
-export const insertTournamentTeamSchema = createInsertSchema(tournamentTeams).omit({ id: true, createdAt: true });
-export const insertTournamentMatchSchema = createInsertSchema(tournamentMatches).omit({ id: true, createdAt: true });
-export const insertMaintenanceLogSchema = createInsertSchema(maintenanceLogs).omit({ id: true, createdAt: true, resolvedAt: true });
-export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, createdAt: true });
-export const insertMembershipPlanSchema = createInsertSchema(membershipPlans).omit({ id: true, createdAt: true });
-export const insertMembershipSchema = createInsertSchema(memberships).omit({ id: true, createdAt: true });
-export const insertLoyaltyPointsSchema = createInsertSchema(loyaltyPoints).omit({ id: true, createdAt: true });
-
-// Types
+// Types for insertion
 export type InsertCourt = z.infer<typeof insertCourtSchema>;
-export type Court = typeof courts.$inferSelect;
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
-export type Customer = typeof customers.$inferSelect;
 export type InsertBooking = z.infer<typeof insertBookingSchema>;
-export type Booking = typeof bookings.$inferSelect;
 export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
-export type Transaction = typeof transactions.$inferSelect;
 export type InsertSettlement = z.infer<typeof insertSettlementSchema>;
-export type Settlement = typeof settlements.$inferSelect;
 export type InsertWaitlist = z.infer<typeof insertWaitlistSchema>;
-export type Waitlist = typeof waitlist.$inferSelect;
 export type InsertBlockedSlot = z.infer<typeof insertBlockedSlotSchema>;
-export type BlockedSlot = typeof blockedSlots.$inferSelect;
 export type InsertTournament = z.infer<typeof insertTournamentSchema>;
-export type Tournament = typeof tournaments.$inferSelect;
 export type InsertTournamentTeam = z.infer<typeof insertTournamentTeamSchema>;
-export type TournamentTeam = typeof tournamentTeams.$inferSelect;
 export type InsertTournamentMatch = z.infer<typeof insertTournamentMatchSchema>;
-export type TournamentMatch = typeof tournamentMatches.$inferSelect;
 export type InsertMaintenanceLog = z.infer<typeof insertMaintenanceLogSchema>;
-export type MaintenanceLog = typeof maintenanceLogs.$inferSelect;
 export type InsertExpense = z.infer<typeof insertExpenseSchema>;
-export type Expense = typeof expenses.$inferSelect;
 export type InsertMembershipPlan = z.infer<typeof insertMembershipPlanSchema>;
-export type MembershipPlan = typeof membershipPlans.$inferSelect;
 export type InsertMembership = z.infer<typeof insertMembershipSchema>;
-export type Membership = typeof memberships.$inferSelect;
 export type InsertLoyaltyPoints = z.infer<typeof insertLoyaltyPointsSchema>;
-export type LoyaltyPoints = typeof loyaltyPoints.$inferSelect;
 
 // Extended types for frontend
 export type BookingWithDetails = Booking & {

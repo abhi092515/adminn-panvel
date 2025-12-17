@@ -1,8 +1,4 @@
-import { drizzle } from "drizzle-orm/node-postgres";
-import pg from "pg";
-import * as schema from "@shared/schema";
-
-const { Pool } = pg;
+import mongoose from "mongoose";
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
@@ -10,5 +6,23 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-export const db = drizzle(pool, { schema });
+export const connectDB = async () => {
+  try {
+    await mongoose.connect(process.env.DATABASE_URL!, { serverSelectionTimeoutMS: 6000 });
+    console.log("MongoDB connected successfully");
+  } catch (err) {
+    console.error("MongoDB connection error:", err);
+    process.exit(1);
+  }
+};
+
+
+export const disconnectDB = async () => {
+  try {
+    await mongoose.disconnect();
+    console.log("MongoDB disconnected successfully");
+  } catch (err) {
+    console.error("MongoDB disconnection error:", err);
+    process.exit(1);
+  }
+};

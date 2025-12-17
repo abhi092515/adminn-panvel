@@ -1,0 +1,14 @@
+{
+    "watch": [
+        "server",
+        "shared"
+    ],
+    "ext": "ts,json",
+    "ignore": [
+        "client"
+    ],
+    "exec": "tsx --env-file=.env server/index.ts",
+    "env": {
+        "NODE_ENV": "development"
+    }
+}
