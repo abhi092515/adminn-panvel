@@ -11,7 +11,6 @@ import {
   AlertCircle,
   BarChart3,
   UserCog,
-  LogOut,
   Crown,
 } from "lucide-react";
 import {
@@ -28,7 +27,6 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useQuery } from "@tanstack/react-query";
 import type { DashboardStats, User } from "@shared/schema";
@@ -234,14 +232,6 @@ export function AppSidebar({ user }: AppSidebarProps) {
             </span>
             <span className="text-xs text-muted-foreground capitalize">{userRole}</span>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => window.location.href = "/api/logout"}
-            data-testid="button-logout"
-          >
-            <LogOut className="w-4 h-4" />
-          </Button>
         </div>
       </SidebarFooter>
     </Sidebar>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -28,55 +28,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Plus, Shield, UserCog, Users, Loader2, ShieldAlert } from "lucide-react";
+import { Plus, Shield, UserCog, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
-import { useLocation } from "wouter";
 import type { User } from "@shared/schema";
 import { rolePermissions } from "@shared/models/auth";
 
 export default function StaffManagement() {
   const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const { user: currentUser, isLoading: authLoading } = useAuth();
-  const [, setLocation] = useLocation();
-
-  // Redirect non-owners to dashboard
-  useEffect(() => {
-    if (!authLoading && currentUser && currentUser.role !== "owner") {
-      toast({
-        title: "Access Denied",
-        description: "Only owners can access staff management.",
-        variant: "destructive",
-      });
-      setLocation("/");
-    }
-  }, [authLoading, currentUser, setLocation, toast]);
 
   const { data: staffList, isLoading, error } = useQuery<User[]>({
     queryKey: ["/api/staff"],
-    enabled: currentUser?.role === "owner",
   });
-
-  // Show loading while checking auth
-  if (authLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  // Show access denied if not owner
-  if (currentUser?.role !== "owner") {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <ShieldAlert className="w-12 h-12 text-destructive" />
-        <h2 className="text-lg font-semibold">Access Denied</h2>
-        <p className="text-muted-foreground">Only owners can manage staff.</p>
-      </div>
-    );
-  }
 
   const updateRoleMutation = useMutation({
     mutationFn: async ({ userId, role }: { userId: string; role: string }) => {

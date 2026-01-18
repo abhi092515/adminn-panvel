@@ -39,14 +39,12 @@ import {
   Award, Coins, Sparkles
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
 import { format } from "date-fns";
 import type { MembershipPlan, Customer, MembershipWithPlan } from "@shared/schema";
 
 export default function Memberships() {
   const { toast } = useToast();
-  const { user } = useAuth();
-  const isOwner = user?.role === "owner";
+  const isOwner = true;
   const [activeTab, setActiveTab] = useState("memberships");
   const [isAddPlanOpen, setIsAddPlanOpen] = useState(false);
   const [isAddMembershipOpen, setIsAddMembershipOpen] = useState(false);
