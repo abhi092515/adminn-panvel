@@ -13,7 +13,7 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### Frontend Architecture
-- **Framework**: React 18 with TypeScript
+- **Framework**: React 18 with TypeScriptv
 - **Routing**: Wouter (lightweight React router)
 - **State Management**: TanStack React Query for server state, React hooks for local state
 - **UI Components**: shadcn/ui component library built on Radix UI primitives
