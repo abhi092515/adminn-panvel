@@ -534,8 +534,8 @@ export default function Customers() {
                   <User className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>No customers found</p>
                   <Button
-                    variant="link"
-                    className="mt-2"
+                    variant="ghost"
+                    className="mt-2 underline text-primary"
                     onClick={() => setAddDialogOpen(true)}
                     data-testid="link-add-first-customer"
                   >

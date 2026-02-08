@@ -568,8 +568,8 @@ export default function Financials() {
                           <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                           <p>No expenses recorded</p>
                           <Button
-                            variant="link"
-                            className="mt-2"
+                            variant="ghost"
+                            className="mt-2 underline text-primary"
                             onClick={() => setExpenseDialogOpen(true)}
                             data-testid="link-add-first-expense"
                           >

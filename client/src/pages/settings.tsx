@@ -406,8 +406,8 @@ export default function Settings() {
                   <LayoutGrid className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>No courts configured</p>
                   <Button
-                    variant="link"
-                    className="mt-2"
+                    variant="ghost"
+                    className="mt-2 underline text-primary"
                     onClick={() => {
                       setEditingCourt(null);
                       setCourtDialogOpen(true);

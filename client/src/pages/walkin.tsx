@@ -56,7 +56,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
 import type { Court, Customer, Booking } from "@shared/schema";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, apiRequestJson, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { TIME_SLOTS, DURATIONS, PAYMENT_METHODS } from "@/lib/constants";
 import { QRCodeSVG } from "qrcode.react";
@@ -340,8 +340,8 @@ export default function WalkinBooking() {
 
   const totalPrice = calculatePrice();
 
-  const createBooking = useMutation({
-    mutationFn: async (data: BookingFormValues) => {
+  const createBooking = useMutation<Booking, Error, BookingFormValues>({
+    mutationFn: async (data) => {
       const bookingData = {
         ...data,
         endTime: calculateEndTime(data.startTime, data.duration),
@@ -356,8 +356,7 @@ export default function WalkinBooking() {
         status: "confirmed",
         qrCode: `BOOKING:${Date.now()}`,
       };
-      const response = await apiRequest("POST", "/api/bookings", bookingData);
-      return response;
+      return apiRequestJson("POST", "/api/bookings", bookingData);
     },
     onSuccess: (booking) => {
       queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });

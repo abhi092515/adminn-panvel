@@ -11,10 +11,15 @@ async function fetchUser(): Promise<User | null> {
   }
 
   if (!response.ok) {
-    throw new Error(`${response.status}: ${response.statusText}`);
+    const text = (await response.text()) || response.statusText;
+    throw new Error(`${response.status}: ${text}`);
   }
 
-  return response.json();
+  const json = await response.json();
+  if (json && typeof json === "object" && "data" in json) {
+    return json.data;
+  }
+  return json;
 }
 
 export function useAuth() {

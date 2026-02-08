@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, apiRequestJson } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -133,11 +133,18 @@ function BookingDetailDialog({
 }) {
   const { toast } = useToast();
   
-  const markNoShowMutation = useMutation({
-    mutationFn: async (bookingId: string) => {
-      const response = await apiRequest("POST", `/api/bookings/${bookingId}/no-show`);
-      return response.json();
+  const markNoShowMutation = useMutation<
+    {
+      booking: Booking;
+      noShowCount: number;
+      isBlacklisted?: boolean;
+      isHighRisk?: boolean;
     },
+    Error,
+    string
+  >({
+    mutationFn: async (bookingId) =>
+      apiRequestJson("POST", `/api/bookings/${bookingId}/no-show`),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });

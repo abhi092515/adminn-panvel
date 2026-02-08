@@ -21,6 +21,17 @@ const courtSchema = new mongoose.Schema({
     peakHourlyRate: String,
     isActive: { type: Boolean, default: true },
     imageUrl: String,
+    timezone: { type: String, default: "UTC" },
+    openingHours: {
+        type: [
+            {
+                dayOfWeek: { type: Number, min: 0, max: 6 },
+                startLocal: String,
+                endLocal: String,
+            },
+        ],
+        default: [],
+    },
 });
 
 const customerSchema = new mongoose.Schema({
@@ -43,6 +54,8 @@ const bookingSchema = new mongoose.Schema({
     date: { type: String, required: true },
     startTime: { type: String, required: true },
     endTime: { type: String, required: true },
+    startAtUtc: { type: Date },
+    endAtUtc: { type: Date },
     duration: { type: Number, required: true },
     totalAmount: { type: String, required: true },
     paidAmount: { type: String, default: "0" },
@@ -193,6 +206,54 @@ const loyaltyPointsSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now },
 });
 
+const reviewSubSchema = new mongoose.Schema(
+  {
+    image: String,
+    username: { type: String, required: true },
+    stars: { type: Number, min: 1, max: 5, required: true },
+    text: String,
+  },
+  { _id: false },
+);
+
+const venueSchema = new mongoose.Schema({
+    title: { type: String, required: true },
+    location: { type: String, required: true },
+    isFav: { type: Boolean, default: false },
+    shareableLink: String,
+    mainCategoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' },
+    categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' },
+    images: { type: [String], default: [] },
+    aboutVenue: {
+        contactDetails: String,
+        bio: String,
+        operationalHours: String,
+    },
+    amenities: { type: [String], default: [] },
+    direction: String,
+    reviews: { type: [reviewSubSchema], default: [] },
+    price: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now },
+});
+
+const mainCategorySchema = new mongoose.Schema({
+    title: { type: String, required: true },
+    image: String,
+    priority: Number,
+    description: String,
+    status: String,
+    createdAt: { type: Date, default: Date.now },
+});
+
+const categorySchema = new mongoose.Schema({
+    title: { type: String, required: true },
+    image: String,
+    priority: Number,
+    description: String,
+    status: String,
+    mainCategoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'MainCategory' },
+    createdAt: { type: Date, default: Date.now },
+});
 
 // Models
 export const User = mongoose.model("User", userSchema);
@@ -211,3 +272,8 @@ export const Expense = mongoose.model("Expense", expenseSchema);
 export const MembershipPlan = mongoose.model("MembershipPlan", membershipPlanSchema);
 export const Membership = mongoose.model("Membership", membershipSchema);
 export const LoyaltyPoints = mongoose.model("LoyaltyPoints", loyaltyPointsSchema);
+export const Venue = mongoose.model("Venue", venueSchema);
+export const MainCategory = mongoose.model("MainCategory", mainCategorySchema);
+export const Category = mongoose.model("Category", categorySchema);
+
+bookingSchema.index({ courtId: 1, startAtUtc: 1, endAtUtc: 1, status: 1 });

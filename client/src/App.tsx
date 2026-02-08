@@ -25,6 +25,10 @@ import Settings from "@/pages/settings";
 import Analytics from "@/pages/analytics";
 import StaffManagement from "@/pages/staff";
 import Memberships from "@/pages/memberships";
+import VenuesPage from "@/pages/venues";
+import CategoriesPage from "@/pages/categories";
+import SlotsPage from "@/pages/slots";
+import SlotBookPage from "@/pages/slot-book";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -37,6 +41,10 @@ function Router() {
       <Route path="/financials" component={Financials} />
       <Route path="/scanner" component={Scanner} />
       <Route path="/tournaments" component={Tournaments} />
+      <Route path="/categories" component={CategoriesPage} />
+      <Route path="/venues" component={VenuesPage} />
+      <Route path="/slots" component={SlotsPage} />
+      <Route path="/book-slot" component={SlotBookPage} />
       <Route path="/waitlist" component={WaitlistPage} />
       <Route path="/settings" component={Settings} />
       <Route path="/analytics" component={Analytics} />

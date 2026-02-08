@@ -2,7 +2,8 @@ import mongoose from "mongoose";
 import {
   User, Court, Customer, Booking, Transaction, Settlement,
   Waitlist, BlockedSlot, Tournament, TournamentTeam, TournamentMatch,
-  MaintenanceLog, Expense, MembershipPlan, Membership, LoyaltyPoints
+  MaintenanceLog, Expense, MembershipPlan, Membership, LoyaltyPoints, Venue,
+  MainCategory, Category,
 } from "./models";
 
 import type {
@@ -22,6 +23,9 @@ import type {
   MembershipPlan as MembershipPlanType, InsertMembershipPlan,
   Membership as MembershipType, InsertMembership,
   LoyaltyPoints as LoyaltyPointsType, InsertLoyaltyPoints,
+  Venue as VenueType, InsertVenue,
+  MainCategory as MainCategoryType, InsertMainCategory,
+  Category as CategoryType, InsertCategory,
 } from "@shared/schema";
 
 // Helper to map Mongo document to Type
@@ -131,6 +135,27 @@ export interface IStorage {
   getLoyaltyPoints(customerId: string): Promise<LoyaltyPointsType[]>;
   createLoyaltyPoints(points: InsertLoyaltyPoints): Promise<LoyaltyPointsType>;
   getCustomerPointsBalance(customerId: string): Promise<number>;
+
+  // Venues
+  getVenues(): Promise<VenueType[]>;
+  getVenue(id: string): Promise<VenueType | undefined>;
+  createVenue(venue: InsertVenue): Promise<VenueType>;
+  updateVenue(id: string, venue: Partial<InsertVenue>): Promise<VenueType | undefined>;
+  deleteVenue(id: string): Promise<void>;
+
+  // Main Categories
+  getMainCategories(): Promise<MainCategoryType[]>;
+  getMainCategory(id: string): Promise<MainCategoryType | undefined>;
+  createMainCategory(data: InsertMainCategory): Promise<MainCategoryType>;
+  updateMainCategory(id: string, data: Partial<InsertMainCategory>): Promise<MainCategoryType | undefined>;
+  deleteMainCategory(id: string): Promise<void>;
+
+  // Categories
+  getCategories(): Promise<CategoryType[]>;
+  getCategory(id: string): Promise<CategoryType | undefined>;
+  createCategory(data: InsertCategory): Promise<CategoryType>;
+  updateCategory(id: string, data: Partial<InsertCategory>): Promise<CategoryType | undefined>;
+  deleteCategory(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -484,6 +509,81 @@ export class DatabaseStorage implements IStorage {
       { $group: { _id: null, total: { $sum: "$points" } } }
     ]);
     return result[0]?.total || 0;
+  }
+
+  // Venues
+  async getVenues(): Promise<VenueType[]> {
+    const docs = await Venue.find().sort({ createdAt: -1 });
+    return docs.map(mapDoc) as VenueType[];
+  }
+
+  async getVenue(id: string): Promise<VenueType | undefined> {
+    const doc = await Venue.findById(id);
+    return mapDoc(doc);
+  }
+
+  async createVenue(venue: InsertVenue): Promise<VenueType> {
+    const doc = await Venue.create(venue);
+    return mapDoc(doc);
+  }
+
+  async updateVenue(id: string, venue: Partial<InsertVenue>): Promise<VenueType | undefined> {
+    const doc = await Venue.findByIdAndUpdate(id, venue, { new: true });
+    return mapDoc(doc);
+  }
+
+  async deleteVenue(id: string): Promise<void> {
+    await Venue.findByIdAndDelete(id);
+  }
+
+  // Main Categories
+  async getMainCategories(): Promise<MainCategoryType[]> {
+    const docs = await MainCategory.find().sort({ priority: 1, createdAt: -1 });
+    return docs.map(mapDoc) as MainCategoryType[];
+  }
+
+  async getMainCategory(id: string): Promise<MainCategoryType | undefined> {
+    const doc = await MainCategory.findById(id);
+    return mapDoc(doc);
+  }
+
+  async createMainCategory(data: InsertMainCategory): Promise<MainCategoryType> {
+    const doc = await MainCategory.create(data);
+    return mapDoc(doc);
+  }
+
+  async updateMainCategory(id: string, data: Partial<InsertMainCategory>): Promise<MainCategoryType | undefined> {
+    const doc = await MainCategory.findByIdAndUpdate(id, data, { new: true });
+    return mapDoc(doc);
+  }
+
+  async deleteMainCategory(id: string): Promise<void> {
+    await MainCategory.findByIdAndDelete(id);
+  }
+
+  // Categories
+  async getCategories(): Promise<CategoryType[]> {
+    const docs = await Category.find().sort({ priority: 1, createdAt: -1 });
+    return docs.map(mapDoc) as CategoryType[];
+  }
+
+  async getCategory(id: string): Promise<CategoryType | undefined> {
+    const doc = await Category.findById(id);
+    return mapDoc(doc);
+  }
+
+  async createCategory(data: InsertCategory): Promise<CategoryType> {
+    const doc = await Category.create(data);
+    return mapDoc(doc);
+  }
+
+  async updateCategory(id: string, data: Partial<InsertCategory>): Promise<CategoryType | undefined> {
+    const doc = await Category.findByIdAndUpdate(id, data, { new: true });
+    return mapDoc(doc);
+  }
+
+  async deleteCategory(id: string): Promise<void> {
+    await Category.findByIdAndDelete(id);
   }
 }
 

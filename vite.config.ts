@@ -32,6 +32,16 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
+    proxy: {
+      "/api": {
+        target: process.env.VITE_BACKEND_URL || "http://localhost:7002",
+        changeOrigin: true,
+      },
+      "/ws": {
+        target: process.env.VITE_BACKEND_URL || "http://localhost:7002",
+        ws: true,
+      },
+    },
     fs: {
       strict: true,
       deny: ["**/.*"],

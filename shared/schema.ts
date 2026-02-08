@@ -200,6 +200,55 @@ export type LoyaltyPoints = {
   createdAt: Date;
 };
 
+export type VenueReview = {
+  image?: string;
+  username: string;
+  stars: number;
+  text?: string;
+};
+
+export type Venue = {
+  id: string;
+  title: string;
+  location: string;
+  isFav: boolean;
+  shareableLink?: string;
+  mainCategoryId?: string;
+  categoryId?: string;
+  images: string[];
+  aboutVenue: {
+    contactDetails?: string;
+    bio?: string;
+    operationalHours?: string;
+  };
+  amenities: string[];
+  direction?: string;
+  reviews: VenueReview[];
+  price: string;
+  createdAt: Date;
+};
+
+export type MainCategory = {
+  id: string;
+  title: string;
+  image?: string;
+  priority?: number;
+  description?: string;
+  status?: string;
+  createdAt: Date;
+};
+
+export type Category = {
+  id: string;
+  title: string;
+  image?: string;
+  priority?: number;
+  description?: string;
+  status?: string;
+  mainCategoryId?: string;
+  createdAt: Date;
+};
+
 // Zod Schemas for Insert (Validation)
 // Using strings for decimals to maintain compatibility with numeric input forms
 export const insertCourtSchema = z.object({
@@ -363,6 +412,49 @@ export const insertLoyaltyPointsSchema = z.object({
   expiresAt: z.string().optional().transform(str => str ? new Date(str) : null),
 });
 
+export const insertMainCategorySchema = z.object({
+  title: z.string().min(1),
+  image: z.string().url().optional(),
+  priority: z.number().int().optional(),
+  description: z.string().optional(),
+  status: z.string().optional(),
+});
+
+export const insertCategorySchema = z.object({
+  title: z.string().min(1),
+  image: z.string().url().optional(),
+  priority: z.number().int().optional(),
+  description: z.string().optional(),
+  status: z.string().optional(),
+  mainCategoryId: z.string().optional(),
+});
+
+export const insertVenueSchema = z.object({
+  title: z.string().min(1),
+  location: z.string().min(1),
+  isFav: z.boolean().default(false),
+  shareableLink: z.string().url().optional(),
+  mainCategoryId: z.string().optional(),
+  categoryId: z.string().optional(),
+  images: z.array(z.string()).default([]),
+  aboutVenue: z.object({
+    contactDetails: z.string().optional(),
+    bio: z.string().optional(),
+    operationalHours: z.string().optional(),
+  }),
+  amenities: z.array(z.string()).default([]),
+  direction: z.string().optional(),
+  reviews: z.array(
+    z.object({
+      image: z.string().optional(),
+      username: z.string(),
+      stars: z.number().int().min(1).max(5),
+      text: z.string().optional(),
+    }),
+  ).default([]),
+  price: z.string().min(1),
+});
+
 // Types for insertion
 export type InsertCourt = z.infer<typeof insertCourtSchema>;
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
@@ -379,6 +471,9 @@ export type InsertExpense = z.infer<typeof insertExpenseSchema>;
 export type InsertMembershipPlan = z.infer<typeof insertMembershipPlanSchema>;
 export type InsertMembership = z.infer<typeof insertMembershipSchema>;
 export type InsertLoyaltyPoints = z.infer<typeof insertLoyaltyPointsSchema>;
+export type InsertVenue = z.infer<typeof insertVenueSchema>;
+export type InsertMainCategory = z.infer<typeof insertMainCategorySchema>;
+export type InsertCategory = z.infer<typeof insertCategorySchema>;
 
 // Extended types for frontend
 export type BookingWithDetails = Booking & {

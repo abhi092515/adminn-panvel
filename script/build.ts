@@ -33,32 +33,53 @@ const allowlist = [
 ];
 
 async function buildAll() {
-  await rm("dist", { recursive: true, force: true });
+  const skipClient = process.env.SKIP_CLIENT_BUILD === "true";
+  const skipServer = process.env.SKIP_SERVER_BUILD === "true";
 
-  console.log("building client...");
-  await viteBuild();
+  if (skipClient && skipServer) {
+    throw new Error("Nothing to build: both SKIP_CLIENT_BUILD and SKIP_SERVER_BUILD are true");
+  }
 
-  console.log("building server...");
-  const pkg = JSON.parse(await readFile("package.json", "utf-8"));
-  const allDeps = [
-    ...Object.keys(pkg.dependencies || {}),
-    ...Object.keys(pkg.devDependencies || {}),
-  ];
-  const externals = allDeps.filter((dep) => !allowlist.includes(dep));
+  // Clean only what we're about to rebuild to avoid deleting an existing artifact
+  if (!skipClient) {
+    await rm("dist/public", { recursive: true, force: true });
+  }
+  if (!skipServer) {
+    await rm("dist/index.cjs", { force: true });
+  }
 
-  await esbuild({
-    entryPoints: ["server/index.ts"],
-    platform: "node",
-    bundle: true,
-    format: "cjs",
-    outfile: "dist/index.cjs",
-    define: {
-      "process.env.NODE_ENV": '"production"',
-    },
-    minify: true,
-    external: externals,
-    logLevel: "info",
-  });
+  if (!skipClient) {
+    console.log("building client...");
+    await viteBuild();
+  } else {
+    console.log("skipping client build (SKIP_CLIENT_BUILD=true)");
+  }
+
+  if (!skipServer) {
+    console.log("building server...");
+    const pkg = JSON.parse(await readFile("package.json", "utf-8"));
+    const allDeps = [
+      ...Object.keys(pkg.dependencies || {}),
+      ...Object.keys(pkg.devDependencies || {}),
+    ];
+    const externals = allDeps.filter((dep) => !allowlist.includes(dep));
+
+    await esbuild({
+      entryPoints: ["server/index.ts"],
+      platform: "node",
+      bundle: true,
+      format: "cjs",
+      outfile: "dist/index.cjs",
+      define: {
+        "process.env.NODE_ENV": '"production"',
+      },
+      minify: true,
+      external: externals,
+      logLevel: "info",
+    });
+  } else {
+    console.log("skipping server build (SKIP_SERVER_BUILD=true)");
+  }
 }
 
 buildAll().catch((err) => {

@@ -303,7 +303,7 @@ export default function Dashboard() {
                     <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
                     <p className="text-sm">No courts configured</p>
                     <Link href="/settings">
-                      <Button variant="link" className="mt-2" data-testid="link-add-courts">
+                      <Button variant="ghost" className="mt-2 underline text-primary" data-testid="link-add-courts">
                         Add Courts
                       </Button>
                     </Link>
@@ -431,7 +431,7 @@ export default function Dashboard() {
                 <CalendarPlus className="h-8 w-8 mx-auto mb-2 opacity-50" />
                 <p className="text-sm">No bookings today</p>
                 <Link href="/walkin">
-                  <Button variant="link" className="mt-2" data-testid="link-create-first-booking">
+                  <Button variant="ghost" className="mt-2 underline text-primary" data-testid="link-create-first-booking">
                     Create first booking
                   </Button>
                 </Link>

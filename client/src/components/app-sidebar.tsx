@@ -3,6 +3,9 @@ import {
   LayoutDashboard,
   Calendar,
   Users,
+  MapPin,
+  Layers,
+  Clock3,
   Wallet,
   Trophy,
   Settings,
@@ -48,6 +51,21 @@ const mainNavItems = [
     icon: Users,
   },
   {
+    title: "Venues",
+    url: "/venues",
+    icon: MapPin,
+  },
+  {
+    title: "Slots",
+    url: "/slots",
+    icon: Clock3,
+  },
+  {
+    title: "Categories",
+    url: "/categories",
+    icon: Layers,
+  },
+  {
     title: "Financials",
     url: "/financials",
     icon: Wallet,
@@ -69,6 +87,11 @@ const quickActions = [
     title: "Walk-in Booking",
     url: "/walkin",
     icon: Clock,
+  },
+  {
+    title: "Book Slot",
+    url: "/book-slot",
+    icon: Clock3,
   },
   {
     title: "Scanner Mode",
